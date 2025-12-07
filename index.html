@@ -246,33 +246,33 @@
 <!--   PAGE : PACKS          -->
 <!-- ======================= -->
 <section id="page-packs" class="page hidden">
-    <div class="card">
-        <h1>Packs</h1>
-        <p class="subtitle">
-    Crée des packs de produits finis pour la vente (ex : pack de 11, de 22, etc.)
-</p>
+  <div class="card">
+    <h1>Packs</h1>
+    <p class="subtitle">
+      Crée des packs de produits finis pour la vente
+      (ex : pack de 11, de 22, plateau dégustation, menu, etc.)
+    </p>
 
-        <h2>Créer un nouveau pack</h2>
+    <h2>Créer un nouveau pack</h2>
 
-        <label>Quantité :</label>
-<input type="number" id="ing-qt" min="0" placeholder="Ex : 1000">
+    <label>Nom du pack :</label>
+    <input type="text" id="pack-nom" placeholder="Ex : Pack 10 produits finis">
 
-        <label>Nombre de produits finis dans le pack :</label>
+    <label>Nombre de produits finis dans le pack :</label>
+    <input type="number" id="pack-qte" min="1" placeholder="Ex : 10">
 
+    <label>Prix de vente du pack (FCFA) :</label>
+    <input type="number" id="pack-prix" min="0" placeholder="Ex : 2500">
 
-        <input type="number" id="pack-qte" min="1" placeholder="Ex : 11">
+    <button id="btn-add-pack" class="btn btn-primary">Créer le pack</button>
 
-        <label>Prix de vente du pack :</label>
-        <input type="number" id="pack-prix" min="0" placeholder="Ex : 500">
+    <hr>
 
-        <button id="btn-add-pack" class="btn btn-primary">Créer le pack</button>
-
-        <hr>
-
-        <h2>Packs existants</h2>
-        <div id="packs-list"></div>
-    </div>
+    <h2>Packs existants</h2>
+    <div id="packs-list"></div>
+  </div>
 </section>
+
 
 <!-- ======================= -->
 <!--      PAGE : RECETTES    -->
@@ -367,8 +367,8 @@
     <input type="number" id="ing-prix" min="0" placeholder="Ex : 900">
 
     <label>Quantité :</label>
- :</label>
     <input type="number" id="ing-qt" min="0" placeholder="Ex : 1000">
+
 
     <label>Unité du paquet :</label>
     <select id="ing-unit">
