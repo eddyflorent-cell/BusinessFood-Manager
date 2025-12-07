@@ -715,7 +715,7 @@ function renderVentePacksFromState() {
     state.packs.forEach((p, index) => {
         const opt = document.createElement("option");
         opt.value = index; // index du pack dans state.packs
-        opt.textContent = `${p.nom} – ${p.nb} gaufres – ${p.prix} FCFA`;
+       opt.textContent = `${p.nom} – ${p.nb} produits finis – ${p.prix} FCFA`;
         select.appendChild(opt);
     });
 
@@ -735,7 +735,7 @@ function renderSelectedPacksUI() {
 
     list.innerHTML = venteCourantePacks.map((p, i) => `
         <div class="vente-pack-item">
-            <span>${p.nom} – ${p.nbGaufres} gaufres – ${p.prixPack} FCFA / pack</span>
+          <span>${p.nom} – ${p.nbGaufres} produits finis – ${p.prixPack} FCFA / pack</span>
             <span>Quantité : <strong>${p.quantite}</strong></span>
             <button type="button" class="btn btn-mini btn-danger" onclick="removePackFromCurrentSale(${i})">
                 X
@@ -878,9 +878,10 @@ function renderPacks() {
         const div = document.createElement("div");
         div.className = "card";
         div.innerHTML = `
-            <strong>${p.nom}</strong> – ${p.nb} gaufres<br><br>
-            <button class="btn btn-danger" onclick="deletePack(${index})">Supprimer</button>
-        `;
+    <strong>${p.nom}</strong> – ${p.nb} produits finis<br><br>
+    <button class="btn btn-danger" onclick="deletePack(${index})">Supprimer</button>
+`;
+
         box.appendChild(div);
     });
 }
