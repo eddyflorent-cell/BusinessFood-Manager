@@ -1,5 +1,7 @@
 /* ===========================================================
-    BusinessFood Manager — STYLE PRO    Bleu #4992db — Rose #ec4f9f — Jaune #f9d648
+    BusinessFood Manager — STYLE PRO
+   Auteur : Takougang Eddy (Fotsi Global Services)
+   © 2025 – Tous droits réservés
 =========================================================== */
 
 /* ---------------- RESET ---------------- */
@@ -494,14 +496,5 @@ td {
 .history-line {
     font-size: 14px;
     margin-top: 3px;
-}
-.app-footer {
-    margin-top: 24px;
-    padding: 8px 12px;
-    font-size: 11px;
-    text-align: center;
-    color: #9ca3af;
-    border-top: 1px solid #e5e7eb;
-    background: #f9fafb;
 }
 

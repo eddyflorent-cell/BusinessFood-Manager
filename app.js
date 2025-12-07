@@ -1,6 +1,8 @@
 /* ============================================================
-    BusinessFood Manager — v4 PRO    Moteur complet : STATE / VENTES / PACKS / VENDEURS /
-    DÉPENSES / DASHBOARD / HISTORIQUE / EXPORT / WHATSAPP
+    BusinessFood Manager v4 PRO
+   Auteur : Takougang Eddy (Fotsi Global Services)
+   Usage : Gestion ingrédients, recettes, produits finis, ventes, stock
+   © 2025 – Tous droits réservés
 =========================================================== */
 
 /* ===============================
@@ -1064,6 +1066,7 @@ function shareWhatsapp() {
     });
 
     let msg = "🔥 Résumé des ventes BusinessFood Manager\n";
+msg += "© 2025 – Takougang Eddy • Fotsi Global Services\n\n";
     msg += `Total produits finis : ${totalGaufres}\n`;
     msg += `Chiffre d'affaires : ${totalCA} FCFA\n\n`;
     msg += "Détail des ventes :\n";
@@ -1095,6 +1098,8 @@ function shareDashboard() {
     const statsIng     = (document.getElementById("dash-stats-ingredients")?.textContent || "").trim();
 
     let msg  = "📊 Tableau de bord BusinessFood Manager\n";
+msg     += "© 2025 – Takougang Eddy • Fotsi Global Services\n\n";
+
     msg     += `Total produits finis vendus : ${totalGaufres}\n`;
     msg     += `Revenu total : ${revenuTotal}\n`;
     msg     += `Dépenses totales : ${depensesTot}\n`;
