@@ -649,11 +649,13 @@ function deleteRecette(index) {
              CHARGEMENT AU DEMARRAGE
    ===================================================== */
 
-document.addEventListener("DOMContentLoaded", () => {
+
+
+
     loadIngredientSelectForRecipe();
     refreshRecetteList();
     refreshRecIngredientsList();
-});
+    showPage("home");
 
 /* ======================== NAVIGATION ======================== */
 
@@ -664,28 +666,33 @@ function showPage(id) {
     // 2. Enlever l’état "active" sur tous les boutons
     document.querySelectorAll(".navbar button").forEach(btn => btn.classList.remove("active"));
 
-    // 3. Afficher la page demandée
+    // 3. Afficher la page demandée + activer l’onglet
     const page = document.querySelector("#page-" + id);
-    const tab = document.querySelector("#tab-" + id);
+    const tab  = document.querySelector("#tab-" + id);
 
     if (page) page.classList.remove("hidden");
-    if (tab) tab.classList.add("active");
+    if (tab)  tab.classList.add("active");
 
-    // 4. Rafraîchir la page affichée
-    if (id === "dashboard") updateDashboard();
-    if (id === "ventes") reloadVentesUI();
-    if (id === "packs") renderPacks();
-    if (id === "vendeurs") renderVendeurs();
-    if (id === "depenses") renderDepenses();
-    if (id === "historique") renderHistorique();
-    if (id === "ingredients") renderIngredients();
-
-    if (id === "recettes") {
+    // 4. Rafraîchir selon la page
+    if (id === "dashboard")       updateDashboard();
+    else if (id === "ventes")     reloadVentesUI();
+    else if (id === "packs")      renderPacks();
+    else if (id === "vendeurs")   renderVendeurs();
+    else if (id === "depenses")   renderDepenses();
+    else if (id === "historique") renderHistorique();
+    else if (id === "ingredients") renderIngredients();
+    else if (id === "recettes") {
         loadIngredientSelectForRecipe();
         refreshRecetteList();
         refreshRecIngredientsList();
     }
+
+    // 5. FORCER LA POSITION EN HAUT, SANS ANIMATION
+    document.documentElement.scrollTop = 0; // pour la plupart des navigateurs
+    document.body.scrollTop = 0;           // fallback
 }
+
+
 
 // Remplit la zone "Packs vendus" de la page Ventes (liste déroulante + packs choisis)
 function renderVentePacksFromState() {
@@ -1968,45 +1975,47 @@ function sTotalGaufres(s) {
     return total;
 }
 
+/* ======================== INIT GLOBAL ======================== */
 
-/* Associer bouton VENTE + init */
 document.addEventListener("DOMContentLoaded", () => {
-    loadIngredientSelectForRecipe();
+    // Page affichée au démarrage
+    showPage("home"); // "home" correspond à <section id="page-home">
 
-    const btn = document.getElementById("btn-enregistrer-vente");
-    if (btn) {
-        btn.addEventListener("click", addSaleFromUI);
+    // VENTES
+    const btnEnregistrerVente = document.getElementById("btn-enregistrer-vente");
+    if (btnEnregistrerVente) {
+        btnEnregistrerVente.addEventListener("click", addSaleFromUI);
     }
 
     const btnAddPackToSale = document.getElementById("vente-pack-add-btn");
     if (btnAddPackToSale) {
         btnAddPackToSale.addEventListener("click", addPackToCurrentSale);
     }
-});
 
-
-/* Associer bouton PACKS */
-document.addEventListener("DOMContentLoaded", () => {
+    // PACKS
     const btnAddPack = document.getElementById("btn-add-pack");
     if (btnAddPack) {
         btnAddPack.addEventListener("click", addPack);
     }
-});
 
-/* Lier bouton → ajout d'ingrédient */
-document.addEventListener("DOMContentLoaded", () => {
+    // INGREDIENTS
     const btnAddIng = document.getElementById("btn-add-ingredient");
     if (btnAddIng) {
         btnAddIng.addEventListener("click", addIngredient);
     }
-});
 
-showPage("dashboard");
-reloadVentesUI();
-renderPacks();
-renderVendeurs();
-renderVentesJour();
-renderDepenses();
-renderHistorique();
-updateDashboard();
-renderIngredients();
+    // RECETTES : listes / sélecteurs
+    loadIngredientSelectForRecipe();
+    refreshRecetteList();
+    refreshRecIngredientsList();
+
+    // Rendu initial
+    reloadVentesUI();
+    renderPacks();
+    renderVendeurs();
+    renderVentesJour();
+    renderDepenses();
+    renderHistorique();
+    updateDashboard();
+    renderIngredients();
+});

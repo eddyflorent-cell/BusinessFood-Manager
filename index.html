@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BusinessFood Manager</title>
+    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="style.css?v=3">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -13,15 +14,20 @@
 <body>
 
     <!-- ======================= NAVBAR ======================= -->
- <nav class="navbar">
-    <button id="tab-dashboard" onclick="showPage('dashboard')" class="active">Dashboard</button>
-    <button id="tab-ventes" onclick="showPage('ventes')">Ventes</button>
-    <button id="tab-packs" onclick="showPage('packs')">Packs</button>
-    <button id="tab-recettes" onclick="showPage('recettes')">Recettes</button>
-    <button id="tab-ingredients" onclick="showPage('ingredients')">Ingrédients</button>
-    <button id="tab-vendeurs" onclick="showPage('vendeurs')">Vendeurs</button>
-    <button id="tab-depenses" onclick="showPage('depenses')">Dépenses</button>
-    <button id="tab-historique" onclick="showPage('historique')">Historique</button>
+<nav class="navbar">
+    <div class="app-title">BusinessFood Manager</div>
+    <div class="nav-links">
+        <button id="tab-home" onclick="showPage('home')" class="active">Accueil</button>
+        <button id="tab-dashboard" onclick="showPage('dashboard')">Dashboard</button>
+        <button id="tab-ventes" onclick="showPage('ventes')">Ventes</button>
+        <button id="tab-packs" onclick="showPage('packs')">Packs</button>
+        <button id="tab-recettes" onclick="showPage('recettes')">Recettes</button>
+        <button id="tab-ingredients" onclick="showPage('ingredients')">Ingrédients</button>
+        <button id="tab-vendeurs" onclick="showPage('vendeurs')">Vendeurs</button>
+        <button id="tab-depenses" onclick="showPage('depenses')">Dépenses</button>
+        <button id="tab-historique" onclick="showPage('historique')">Historique</button>
+        <button id="tab-tutoriel" onclick="showPage('tutoriel')">Tutoriel</button>
+    </div>
 </nav>
 
 <!-- VENTES -->
@@ -103,6 +109,60 @@
     </div>
 </section>
 
+<!-- ======================= PAGE : ACCUEIL ======================= -->
+<section id="page-home" class="page">
+
+    <div class="home-hero">
+        <h1>BusinessFood Manager</h1>
+        <p class="home-subtitle">
+            Gérez vos ingrédients, recettes, produits finis, ventes et marges
+            en quelques clics, que vous fassiez des gaufres, des burgers,
+            des plats cuisinés ou des pâtisseries.
+        </p>
+
+        <div class="home-signature">
+            Conçu par <strong>Takougang Eddy</strong> – Fotsi Global Services<br>
+            © 2025 – BusinessFood Manager
+        </div>
+    </div>
+
+<div class="home-actions">
+    <div class="home-card">
+        <h2>Commencer une vente</h2>
+        <p>Enregistrer une nouvelle vente de produits finis, avec ou sans pack.</p>
+        <button class="btn btn-primary" onclick="showPage('ventes')">
+            ➜ Aller à la page Ventes
+        </button>
+    </div>
+
+    <div class="home-card">
+        <h2>Gérer mes recettes</h2>
+        <p>Créer ou modifier les recettes qui génèrent vos produits finis.</p>
+        <button class="btn btn-pink" onclick="showPage('recettes')">
+            ➜ Aller à la page Recettes
+        </button>
+    </div>
+
+    <div class="home-card">
+        <h2>Dashboard & Résultats</h2>
+        <p>Voir le chiffre d’affaires, les dépenses, le bénéfice et la capacité restante.</p>
+        <button class="btn btn-secondary" onclick="showPage('dashboard')">
+            ➜ Voir le tableau de bord
+        </button>
+    </div>
+
+    <!-- NOUVELLE CARTE TUTORIEL -->
+    <div class="home-card">
+        <h2>Prendre l’outil en main</h2>
+        <p>Suivre le tutoriel pas à pas pour apprendre à utiliser BusinessFood Manager.</p>
+        <button class="btn btn-yellow" onclick="showPage('tutoriel')">
+            ➜ Ouvrir le tutoriel
+        </button>
+    </div>
+</div>
+
+
+</section>
 
     <!-- ======================= PAGE : DASHBOARD ======================= -->
 <section id="page-dashboard" class="page">
@@ -390,11 +450,175 @@
 
     <!-- ======================= SCRIPTS ======================= -->
     <script src="app.js"></script>
+    <!-- ======================= PAGE : TUTORIEL ======================= -->
+<section id="page-tutoriel" class="page hidden">
+
+    <h1>Tutoriel – Prendre en main BusinessFood Manager</h1>
+    <p class="tuto-intro">
+        Ce guide explique comment utiliser l’application au quotidien.
+        L’idée : tu renseignes d’abord tes ingrédients, puis tes recettes,
+        ensuite tes packs, et enfin tu enregistres les ventes. Le Dashboard
+        et l’Historique se mettent à jour automatiquement.
+    </p>
+
+    <div class="tuto-grid">
+
+        <!-- Étape 1 : Ingrédients -->
+        <div class="tuto-step">
+            <h3>1. Renseigner les ingrédients</h3>
+            <p><strong>Onglet : Ingrédients</strong></p>
+            <ol>
+                <li>Cliquer sur <strong>Ingrédients</strong> dans le menu.</li>
+                <li>Pour chaque ingrédient (farine, œufs, huile, etc.) :
+                    <ul>
+                        <li>Nom de l’ingrédient.</li>
+                        <li><strong>Prix d’achat</strong> total (ex : 1000 FCFA).</li>
+                        <li><strong>Quantité achetée</strong> (ex : 1 000 g, 12 œufs).</li>
+                        <li><strong>Unité</strong> : g, kg, L, mL, pièce, sachet…</li>
+                        <li>Seuil d’alerte (facultatif) pour savoir quand le stock est bas.</li>
+                    </ul>
+                </li>
+                <li>Cliquer sur <strong>Ajouter l’ingrédient</strong>.</li>
+                <li>La ligne apparaît dans le tableau de stock avec quantité restante,
+                    prix unitaire et valeur du stock.</li>
+            </ol>
+            <p class="tuto-note">
+                ➜ Si tu t’es trompé, clique sur <strong>Modifier</strong>, corrige les infos puis sauvegarde.
+            </p>
+        </div>
+
+        <!-- Étape 2 : Recettes -->
+        <div class="tuto-step">
+            <h3>2. Créer les recettes</h3>
+            <p><strong>Onglet : Recettes</strong></p>
+            <ol>
+                <li>Cliquer sur <strong>Recettes</strong>.</li>
+                <li>Donner un nom à la recette (ex : Pâte à gaufres de base, Burger classique, Plat du jour…).</li>
+                <li>Dans le bloc <strong>Ingrédients de la recette</strong> :
+                    <ul>
+                        <li>Choisir un ingrédient dans la liste déroulante.</li>
+                        <li>Indiquer la quantité utilisée dans la recette (même unité que le stock).</li>
+                        <li>Le système calcule automatiquement le <strong>coût utilisé</strong>.</li>
+                        <li>Répéter pour tous les ingrédients de la recette.</li>
+                    </ul>
+                </li>
+                <li>Indiquer le nombre de <strong>produits finis</strong> obtenus avec cette recette
+                    (ex : 20 gaufres, 10 parts de gratin, 15 burgers…).</li>
+                <li>Enregistrer la recette.</li>
+            </ol>
+            <p class="tuto-note">
+                ➜ Le coût total de la recette et le coût par produit fini sont calculés automatiquement.
+            </p>
+        </div>
+
+        <!-- Étape 3 : Packs -->
+        <div class="tuto-step">
+            <h3>3. Définir les packs (options de vente)</h3>
+            <p><strong>Onglet : Packs</strong></p>
+            <ol>
+                <li>Cliquer sur <strong>Packs</strong>.</li>
+                <li>Créer un pack (ex : Pack 10 gaufres, Menu Burger + Boisson, Plateau dégustation…).</li>
+                <li>Indiquer :
+                    <ul>
+                        <li>Le nom du pack.</li>
+                        <li>Le nombre de produits finis inclus.</li>
+                        <li>Le prix de vente du pack.</li>
+                    </ul>
+                </li>
+                <li>Enregistrer le pack.</li>
+            </ol>
+            <p class="tuto-note">
+                ➜ Ces packs seront proposés automatiquement sur la page <strong>Ventes</strong>.
+            </p>
+        </div>
+
+        <!-- Étape 4 : Ventes -->
+        <div class="tuto-step">
+            <h3>4. Enregistrer les ventes</h3>
+            <p><strong>Onglet : Ventes</strong></p>
+            <ol>
+                <li>Cliquer sur <strong>Ventes</strong> ou utiliser le bouton
+                    <strong>“Aller à la page Ventes”</strong> depuis l’accueil.</li>
+                <li>Renseigner :
+                    <ul>
+                        <li>Date et heure.</li>
+                        <li>Vendeur (choisi dans la liste).</li>
+                        <li>Lieu : marché, boutique, événement…</li>
+                    </ul>
+                </li>
+                <li>Pour les <strong>packs</strong> :
+                    <ul>
+                        <li>Choisir un pack dans la liste.</li>
+                        <li>Indiquer la quantité vendue.</li>
+                        <li>Cliquer sur <strong>Ajouter</strong>.</li>
+                    </ul>
+                </li>
+                <li>Pour les <strong>unités hors pack</strong> :
+                    <ul>
+                        <li>Indiquer le nombre d’unités vendues.</li>
+                        <li>Indiquer le prix unitaire si besoin.</li>
+                    </ul>
+                </li>
+                <li>Cliquer sur <strong>Enregistrer la vente</strong>.</li>
+            </ol>
+            <p class="tuto-note">
+                ➜ La vente apparaît dans « Ventes du jour » et dans l’onglet <strong>Historique</strong>.
+            </p>
+        </div>
+
+        <!-- Étape 5 : Suivi & export -->
+        <div class="tuto-step">
+            <h3>5. Suivre les résultats & exporter</h3>
+            <p><strong>Onglets : Dashboard & Historique</strong></p>
+            <ol>
+                <li><strong>Dashboard</strong> :
+                    <ul>
+                        <li>Stock de produits finis et capacité restante.</li>
+                        <li>Revenu total, dépenses totales, bénéfice net.</li>
+                        <li>Meilleur vendeur et pack le plus vendu.</li>
+                    </ul>
+                </li>
+                <li><strong>Historique</strong> :
+                    <ul>
+                        <li>Liste des ventes avec date, lieu, vendeur et détail des packs.</li>
+                        <li>Boutons pour <strong>Exporter PDF</strong>, <strong>Exporter CSV</strong>,
+                            ou <strong>Partager WhatsApp</strong>.</li>
+                    </ul>
+                </li>
+            </ol>
+            <p class="tuto-note">
+                ➜ Idéal pour envoyer un récap au patron ou garder une trace de la journée.
+            </p>
+        </div>
+
+        <!-- Étape 6 : Sauvegarde -->
+        <div class="tuto-step">
+            <h3>6. Sauvegarder tes données</h3>
+            <p><strong>Mode hors-ligne / téléphone</strong></p>
+            <ul>
+                <li>L’application enregistre les données dans le navigateur (localStorage).</li>
+                <li>Pour sécuriser :
+                    <ul>
+                        <li>Exporter régulièrement ton historique en <strong>CSV</strong> ou <strong>PDF</strong>.</li>
+                        <li>Envoyer ces fichiers par mail, WhatsApp ou les stocker sur une clé USB.</li>
+                    </ul>
+                </li>
+                <li>Si tu changes de téléphone ou de navigateur, pense à repartir d’un export.</li>
+            </ul>
+        </div>
+
+    </div>
+
+    <p class="tuto-outro">
+        💡 En résumé : <strong>Ingrédients → Recettes → Packs → Ventes → Dashboard & Historique</strong>.<br>
+        Une fois la base configurée, tu n’as plus qu’à saisir les ventes chaque jour.
+    </p>
+
+</section>
+
 <footer class="app-footer">
     BusinessFood Manager – © 2025 Takougang Eddy • Fotsi Global Services
+    
 </footer>
-</body>
-</html>
-
 </body>
 </html>

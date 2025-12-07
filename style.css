@@ -191,36 +191,55 @@ td {
     display: none !important;
 }
 
-/* ================= NAVBAR (TOP) ================= */
+/* NAVBAR TOP */
 .navbar {
     position: sticky;
     top: 0;
     width: 100%;
     background: #183153;
-    padding: 8px 4px;
+    padding: 4px 8px 8px;
     display: flex;
-    flex-wrap: wrap;          /* 👉 les boutons peuvent passer sur 2 lignes */
-    justify-content: center;  /* 👉 on centre tout, plus de trous */
-    gap: 6px;
+    flex-direction: column;      /* titre en haut, boutons en dessous */
     align-items: center;
+    gap: 4px;
     z-index: 10000;
     border-bottom: 4px solid #fbcf33;
 }
 
-.navbar button {
-    background: none;
-    border: none;
-    padding: 6px 8px;         /* un peu plus compact pour tenir sur mobile */
-    color: white;
-    font-size: 14px;
+/* Titre BusinessFood Manager dans la barre */
+.app-title {
     font-weight: 600;
-    cursor: pointer;
+    color: #ffffff;
+    font-size: 14px;
+    user-select: none;           /* juste pour éviter la sélection bleue */
 }
 
-.navbar button.active {
-    color: #ff4081;
-    border-bottom: 2px solid #ff4081;
+/* Ligne des boutons */
+.nav-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
 }
+
+.nav-links button {
+    background: none;
+    border: none;
+    padding: 6px 10px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 999px;
+}
+
+.nav-links button.active {
+    background: #ff4081;
+    color: #fff;
+}
+
+
 
 
 /* ====================== DASHBOARD STYLE ====================== */
@@ -281,7 +300,8 @@ td {
     box-shadow: 0 3px 8px rgba(0,0,0,0.08);
 }
 
-/* Pour mieux respirer sous la navbar */
+/* Pour mieux respirer sous la 
+ */
 .page {
     padding-bottom: 40px;
 }
@@ -402,41 +422,24 @@ td {
 
 @media (max-width: 768px) {
 
-    body {
-        font-size: 15px;
-    }
-
-    /* Sections : full largeur, plus simple comme FGS Bar */
-    section {
-        width: 100%;
-        margin: 8px 0;
-        border-radius: 0;
-        box-shadow: none;
-        padding: 16px 12px;
-    }
-
-    .page {
-        padding-bottom: 60px;
-    }
-
-    /* NAVBAR : ruban défilable, tous les onglets restent dans le bleu */
-    .navbar {
-        padding: 8px 6px;
+    .nav-links {
         justify-content: flex-start;
-        gap: 6px;
         overflow-x: auto;
         white-space: nowrap;
     }
 
-    .navbar::-webkit-scrollbar {
+    .nav-links::-webkit-scrollbar {
         display: none;
     }
 
-    .navbar button {
-        font-size: 13px;
-        padding: 8px 10px;
-        flex: 0 0 auto; /* chaque bouton garde sa largeur */
+    .nav-links button {
+        flex: 0 0 auto;      /* chaque bouton garde sa largeur */
+        font-size: 12px;
+        padding: 6px 8px;
     }
+}
+
+
 
     /* Dashboard : 1 colonne sur mobile */
     .dashboard-grid {
@@ -455,7 +458,7 @@ td {
         width: 100%;
         text-align: center;
     }
-}
+
 /* ---------------- HISTORIQUE ---------------- */
 .history-card {
     margin: 12px 0;
@@ -498,3 +501,120 @@ td {
     margin-top: 3px;
 }
 
+/* ======================= PAGE ACCUEIL ======================= */
+
+#page-home {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.home-hero {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.home-hero h1 {
+    font-size: 26px;
+    margin-bottom: 8px;
+}
+
+.home-subtitle {
+    font-size: 14px;
+    color: #4b5563;
+    margin-bottom: 12px;
+}
+
+.home-signature {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.home-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.home-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    border: 1px solid #e5e7eb;
+}
+
+.home-card h2 {
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.home-card p {
+    font-size: 13px;
+    color: #4b5563;
+    margin-bottom: 8px;
+}
+.app-footer {
+    width: 100%;
+    text-align: center;
+    margin-top: 16px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #6b7280;
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+}
+/* ======================= PAGE TUTORIEL ======================= */
+
+#page-tutoriel {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+#page-tutoriel h1 {
+    margin-bottom: 12px;
+}
+
+.tuto-intro,
+.tuto-outro {
+    font-size: 14px;
+    color: #4b5563;
+    margin-bottom: 16px;
+}
+
+.tuto-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.tuto-step {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    border: 1px solid #e5e7eb;
+    font-size: 13px;
+    color: #374151;
+}
+
+.tuto-step h3 {
+    margin-bottom: 6px;
+    font-size: 15px;
+}
+
+.tuto-step ol,
+.tuto-step ul {
+    padding-left: 18px;
+    margin: 4px 0;
+}
+
+.tuto-step li {
+    margin-bottom: 2px;
+}
+
+.tuto-note {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #6b7280;
+}
