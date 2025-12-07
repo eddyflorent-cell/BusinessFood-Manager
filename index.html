@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BusinessFood Manager</title>
+    <link rel="stylesheet" href="style.css?v=3">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+</head>
+
+<body>
+
+    <!-- ======================= NAVBAR ======================= -->
+ <nav class="navbar">
+    <button id="tab-dashboard" onclick="showPage('dashboard')" class="active">Dashboard</button>
+    <button id="tab-ventes" onclick="showPage('ventes')">Ventes</button>
+    <button id="tab-packs" onclick="showPage('packs')">Packs</button>
+    <button id="tab-recettes" onclick="showPage('recettes')">Recettes</button>
+    <button id="tab-ingredients" onclick="showPage('ingredients')">Ingrédients</button>
+    <button id="tab-vendeurs" onclick="showPage('vendeurs')">Vendeurs</button>
+    <button id="tab-depenses" onclick="showPage('depenses')">Dépenses</button>
+    <button id="tab-historique" onclick="showPage('historique')">Historique</button>
+</nav>
+
+<!-- VENTES -->
+<section id="page-ventes" class="page hidden">
+    <div class="card">
+        <h1>Nouvelle vente</h1>
+        <p class="subtitle">
+            Enregistre ici une nouvelle vente. Chaque vente est indépendante et s'ajoute à l’historique.
+        </p>
+
+        <div class="grid-2">
+            <div>
+                <label>Date</label>
+                <input type="date" id="vente-date" />
+            </div>
+
+            <div>
+                <label>Heure</label>
+                <input type="time" id="vente-heure" />
+            </div>
+
+            <div>
+                <label>Vendeur</label>
+                <select id="vente-vendeur"></select>
+            </div>
+
+                        <div>
+                <label>Lieu</label>
+                <input type="text" id="vente-lieu" placeholder="Marché, boutique, événement…" />
+            </div>
+
+            <div class="full-width">
+                <label>Packs vendus</label>
+                <p class="subtitle small">
+                    Les packs listés ici viennent de l’onglet <strong>Packs</strong>.
+                    Choisis un pack dans la liste, indique combien tu en as vendu, puis clique sur « Ajouter ».
+                </p>
+
+                <!-- Ligne de sélection du pack -->
+                <div class="vente-pack-select-row">
+                    <select id="vente-pack-select">
+                        <option value="">-- Choisir un pack --</option>
+                    </select>
+
+                    <input type="number" id="vente-pack-qte" min="1" value="1" />
+
+                    <button type="button" id="vente-pack-add-btn" class="btn btn-secondary">
+                        ➕ Ajouter ce pack
+                    </button>
+                </div>
+
+                <!-- Packs ajoutés pour cette vente -->
+                <div id="vente-packs-choisis" class="vente-packs-choisis">
+                    <em>Aucun pack encore ajouté pour cette vente.</em>
+                </div>
+            </div>
+
+
+            <div>
+                <label>Unités vendues (hors packs)</label>
+                <input type="number" id="vente-unites" min="0" value="0" />
+            </div>
+
+            <div>
+                <label>Prix unitaire (FCFA)</label>
+                <input type="number" id="vente-prix-unite" value="50" min="0" />
+            </div>
+        </div>
+
+        <button class="btn-primary" id="btn-enregistrer-vente">
+            ➕ Enregistrer la vente
+        </button>
+    </div>
+
+    <div class="card" id="liste-ventes">
+        <h2>Ventes du jour</h2>
+        <p class="subtitle">Les ventes ajoutées apparaissent ici.</p>
+        <div id="vente-liste-container"></div>
+    </div>
+</section>
+
+
+    <!-- ======================= PAGE : DASHBOARD ======================= -->
+<section id="page-dashboard" class="page">
+
+    <h1>Tableau de Bord</h1>
+
+    <div class="dashboard-grid">
+
+        <!-- Gaufres vendues -->
+        <div class="dash-card">
+            <h3>Stock de produits finis</h3>
+<p id="dash-stock-restant">0 produit fini</p>
+            <p id="dash-total-gaufres">0</p>
+        </div>
+
+        <!-- Chiffre d’affaires -->
+        <div class="dash-card">
+            <h3>Revenu total</h3>
+            <p id="dash-revenu-total">0 FCFA</p>
+        </div>
+
+        <!-- Dépenses -->
+        <div class="dash-card">
+            <h3>Dépenses totales</h3>
+            <p id="dash-depenses">0 FCFA</p>
+        </div>
+
+        <!-- Bénéfice net -->
+        <div class="dash-card">
+            <h3>Bénéfice net</h3>
+            <p id="dash-benefice-net">0 FCFA</p>
+        </div>
+
+                <!-- Stock de gaufres prêtes -->
+        <div class="dash-card">
+            <h3>Stock de gaufres</h3>
+            <p id="dash-stock-restant">0 gaufres</p>
+        </div>
+
+
+        <!-- Capacité gaufres restantes -->
+        <div class="dash-card">
+           <h3>Capacité restante</h3>
+<p id="dash-capacite">0 produits finis possibles</p>
+
+        </div>
+
+        <!-- Meilleur vendeur -->
+        <div class="dash-card big">
+            <h3>Meilleur vendeur</h3>
+            <p id="dash-best-vendeur">-</p>
+        </div>
+
+        <!-- Pack le plus vendu -->
+        <div class="dash-card big">
+            <h3>Pack le plus vendu</h3>
+            <p id="dash-best-pack">-</p>
+        </div>
+
+    </div>
+
+    <hr class="separator">
+
+        <h2>Statistiques avancées</h2>
+
+    <div class="dash-advanced">
+        <p id="dash-stats-ventes">Analyse ventes : -</p>
+        <p id="dash-stats-ingredients">Analyse ingrédients : -</p>
+    </div>
+
+    <div style="margin-top: 20px; text-align: right;">
+        <button class="btn btn-pink" onclick="shareDashboard()">
+            📲 Partager le tableau de bord
+        </button>
+    </div>
+
+</section>
+
+
+
+
+    <!-- ======================= -->
+<!--   PAGE : PACKS          -->
+<!-- ======================= -->
+<section id="page-packs" class="page hidden">
+    <div class="card">
+        <h1>Packs</h1>
+        <p class="subtitle">
+    Crée des packs de produits finis pour la vente (ex : pack de 11, de 22, etc.)
+</p>
+
+        <h2>Créer un nouveau pack</h2>
+
+        <label>Nom du pack :</label>
+        <input type="text" id="pack-nom" placeholder="Ex : Pack 11 produits finis">
+
+
+        <label>Nombre de produits finis dans le pack :</label>
+
+
+        <input type="number" id="pack-qte" min="1" placeholder="Ex : 11">
+
+        <label>Prix de vente du pack :</label>
+        <input type="number" id="pack-prix" min="0" placeholder="Ex : 500">
+
+        <button id="btn-add-pack" class="btn btn-primary">Créer le pack</button>
+
+        <hr>
+
+        <h2>Packs existants</h2>
+        <div id="packs-list"></div>
+    </div>
+</section>
+
+<!-- ======================= -->
+<!--      PAGE : RECETTES    -->
+<!-- ======================= -->
+<section id="page-recettes" class="page hidden">
+
+    <div class="card">
+        <h1>Recettes (Pâte – Base 1 kg de farine)</h1>
+        <p class="subtitle">
+            Déclare ici les quantités réelles utilisées pour préparer ta pâte. 
+            Le système calculera automatiquement le coût total et le coût de revient par produit fini.
+
+
+        </p>
+
+        <!-- Formulaire création recette -->
+        <h2>Créer une recette</h2>
+
+        <label>Nom de la recette :</label>
+        <input id="rec-nom" type="text" placeholder="Ex : Pâte vanille">
+
+   <label>Nombre de produits finis obtenus :</label>
+<input id="rec-nb-gaufres" type="number" min="1" placeholder="Ex : 120">
+
+<label>Prix de vente d’un produit fini (FCFA) :</label>
+<input id="rec-prix-vente" type="number" min="0" placeholder="Ex : 200">
+
+<h3>Ingrédients utilisés dans la recette</h3>
+
+
+        <!-- Ajout d'ingrédient -->
+        <div class="recette-add-ing">
+            <label>Ingrédient :</label>
+            <select id="rec-ingredient-select">
+                <option value="">-- Choisir un ingrédient --</option>
+            </select>
+
+            <label>Quantité :</label>
+            <input id="rec-ingredient-qte" type="number" min="0" placeholder="Ex : 250">
+
+            <label>Unité :</label>
+            <select id="rec-ingredient-unit">
+                <option value="g">g</option>
+                <option value="kg">kg</option>
+                <option value="ml">ml</option>
+                <option value="l">L</option>
+                <option value="piece">pièce</option>
+            </select>
+
+            <button id="rec-add-ingredient-btn" class="btn btn-secondary" style="margin-top:10px;">
+                ➕ Ajouter cet ingrédient
+            </button>
+        </div>
+
+        <br>
+
+        <!-- Liste ingrédients recette -->
+        <div class="card">
+            <h3>Ingrédients ajoutés :</h3>
+            <div id="rec-ingredients-list">
+                <em>Aucun ingrédient ajouté pour le moment.</em>
+            </div>
+        </div>
+
+        <br>
+
+        <button id="btn-save-recipe" class="btn btn-primary">Enregistrer la recette</button>
+    </div>
+
+    <hr>
+
+    <!-- Liste des recettes existantes -->
+    <div class="card">
+        <h2>Recettes enregistrées</h2>
+        <div id="rec-liste"></div>
+    </div>
+
+</section>
+
+
+<!-- ======================= PAGE : INGRÉDIENTS ======================= -->
+<section id="page-ingredients" class="page hidden">
+
+    <h1>Ingrédients – Stock & Coût</h1>
+
+    <h2>Ajouter un ingrédient au stock</h2>
+
+    <label>Nom de l'ingrédient :</label>
+    <input id="ing-nom" placeholder="Ex : Farine">
+
+    <label>Prix d'achat (FCFA) :</label>
+    <input type="number" id="ing-prix" min="0" placeholder="Ex : 900">
+
+    <label>Quantité :</label>
+ :</label>
+    <input type="number" id="ing-qt" min="0" placeholder="Ex : 1000">
+
+    <label>Unité du paquet :</label>
+    <select id="ing-unit">
+        <option value="g">g</option>
+        <option value="kg">kg</option>
+        <option value="ml">ml</option>
+        <option value="l">L</option>
+        <option value="piece">pièce</option>
+        <option value="sachet">sachet</option>
+    </select>
+    <label>Seuil d'alerte (même unité) :</label>
+    <input type="number" id="ing-seuil" min="0" placeholder="Ex : 200">
+
+    <button id="btn-add-ingredient" class="btn btn-primary" style="margin-top: 10px;">
+        Ajouter l'ingrédient
+    </button>
+
+    <h2>Stock actuel</h2>
+    <div id="ingredients-list"></div>
+
+</section>
+
+
+
+    <!-- ======================= PAGE : VENDEURS ======================= -->
+    <section id="page-vendeurs" class="page hidden">
+        <h1>Vendeurs</h1>
+
+        <h2>Ajouter un vendeur</h2>
+        <label>Nom :</label>
+        <input id="vendeur-nom" placeholder="Prénom">
+
+        <label>Commission (% ou montant fixe) :</label>
+        <input id="vendeur-commission" placeholder="Ex : 500 (montant fixe)">
+
+        <button class="btn btn-primary" onclick="addVendeur()">Ajouter le Vendeur</button>
+
+        <h2>Liste des vendeurs</h2>
+        <div id="vendeurs-list"></div>
+    </section>
+
+
+
+    <!-- ======================= PAGE : DÉPENSES ======================= -->
+    <section id="page-depenses" class="page hidden">
+        <h1>Dépenses du Jour</h1>
+
+        <label>Catégorie :</label>
+        <input id="dep-cat" placeholder="Ex : Transport, Farine…">
+
+        <label>Montant (FCFA) :</label>
+        <input type="number" id="dep-montant" min="50">
+
+        <label>Commentaire :</label>
+        <textarea id="dep-note" placeholder="Détails optionnels"></textarea>
+
+        <button class="btn btn-danger" onclick="addDepense()">Ajouter Dépense</button>
+
+        <h2>Dépenses enregistrées</h2>
+        <div id="depenses-list"></div>
+    </section>
+
+
+
+    <!-- ======================= PAGE : HISTORIQUE ======================= -->
+    <section id="page-historique" class="page hidden">
+        <h1>Historique</h1>
+
+        <div id="historique-list"></div>
+
+        <button class="btn btn-yellow" onclick="exportPDF()">Exporter PDF</button>
+        <button class="btn btn-primary" onclick="exportCSV()">Exporter CSV</button>
+        <button class="btn btn-pink" onclick="shareWhatsapp()">Partager WhatsApp</button>
+    </section>
+
+
+    <!-- ======================= SCRIPTS ======================= -->
+    <script src="app.js"></script>
+
+</body>
+</html>

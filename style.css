@@ -1,0 +1,498 @@
+/* ===========================================================
+    BusinessFood Manager — STYLE PRO    Bleu #4992db — Rose #ec4f9f — Jaune #f9d648
+=========================================================== */
+
+/* ---------------- RESET ---------------- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+body {
+    background: #f2f2f2;
+    color: #222;
+    padding-bottom: 50px;
+}
+
+/* ---------------- GLOBAL ---------------- */
+h1, h2, h3 {
+    color: #4992db;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+
+section {
+    background: white;
+    padding: 20px;
+    margin: 15px auto;
+    border-radius: 14px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    width: 95%;
+    max-width: 700px;
+}
+
+/* ---------------- INPUTS ---------------- */
+input, select, textarea {
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0 16px 0;
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    background: #fafafa;
+    font-size: 16px;
+}
+
+textarea {
+    height: 100px;
+}
+
+
+/* ---------------- BUTTONS ---------------- */
+.btn {
+    display: inline-block;
+    padding: 12px 18px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: 0.2s;
+}
+
+/* Bleu */
+.btn-primary {
+    background: #4992db;
+    color: white;
+}
+.btn-primary:hover {
+    background: #367ac4;
+}
+
+/* Rose */
+.btn-pink {
+    background: #ec4f9f;
+    color: white;
+}
+.btn-pink:hover {
+    background: #d3428d;
+}
+
+/* Jaune */
+.btn-yellow {
+    background: #f9d648;
+    color: #222;
+}
+.btn-yellow:hover {
+    background: #eec635;
+}
+
+/* Danger */
+.btn-danger {
+    background: #ff3b30;
+    color: white;
+}
+.btn-danger:hover {
+    background: #d83027;
+}
+
+
+/* ---------------- CARDS ---------------- */
+.card {
+    background: white;
+    padding: 15px;
+    border-radius: 14px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.07);
+    margin: 10px 0;
+}
+
+/* ---------------- DASHBOARD ---------------- */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.dashboard-box {
+    background: white;
+    padding: 15px;
+    border-radius: 14px;
+    border-left: 6px solid #4992db;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+}
+
+.dashboard-box h3 {
+    color: #ec4f9f;
+    margin-bottom: 5px;
+}
+
+/* ---------------- TABLE ---------------- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th {
+    background: #4992db;
+    color: white;
+    padding: 10px;
+}
+
+td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+/* ---------------- MODAL ---------------- */
+.modal-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal {
+    background: white;
+    width: 90%;
+    max-width: 450px;
+    padding: 20px;
+    border-radius: 14px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+/* ---------------- MOBILE ---------------- */
+@media (max-width: 480px) {
+    h1 {
+        font-size: 22px;
+        text-align: center;
+    }
+
+    section {
+        padding: 15px;
+    }
+
+    .btn {
+        width: 100%;
+        margin-top: 5px;
+    }
+}
+.hidden {
+    display: none !important;
+}
+
+/* ================= NAVBAR (TOP) ================= */
+.navbar {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    background: #183153;
+    padding: 8px 4px;
+    display: flex;
+    flex-wrap: wrap;          /* 👉 les boutons peuvent passer sur 2 lignes */
+    justify-content: center;  /* 👉 on centre tout, plus de trous */
+    gap: 6px;
+    align-items: center;
+    z-index: 10000;
+    border-bottom: 4px solid #fbcf33;
+}
+
+.navbar button {
+    background: none;
+    border: none;
+    padding: 6px 8px;         /* un peu plus compact pour tenir sur mobile */
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.navbar button.active {
+    color: #ff4081;
+    border-bottom: 2px solid #ff4081;
+}
+
+
+/* ====================== DASHBOARD STYLE ====================== */
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.dash-card {
+    background: #ffffff;
+    padding: 15px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+    transition: transform 0.15s ease;
+}
+
+.dash-card:hover {
+    transform: scale(1.03);
+}
+
+.dash-card h3 {
+    margin: 0;
+    margin-bottom: 8px;
+    font-size: 16px;
+    color: #183153; /* bleu nuit W.E */
+    font-weight: 600;
+}
+
+.dash-card p {
+    margin: 0;
+    font-size: 22px;
+    font-weight: bold;
+    color: #ff4081; /* rose W.E */
+}
+
+.dash-card.big {
+    grid-column: span 2;
+}
+
+.separator {
+    margin: 30px 0;
+    border: none;
+    height: 3px;
+    background: #fbcf33; /* jaune W.E */
+    border-radius: 2px;
+}
+
+.dash-advanced p {
+    font-size: 15px;
+    padding: 8px;
+    background: #ffffff;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+}
+
+/* Pour mieux respirer sous la navbar */
+.page {
+    padding-bottom: 40px;
+}
+.table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 10px;
+}
+
+.stock-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.stock-table th,
+.stock-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eee;
+    text-align: left;
+}
+
+.stock-table th {
+    background: #f5f7fb;
+    font-weight: 600;
+    color: #183153;
+}
+
+.stock-table tfoot th {
+    background: #e8f3ff;
+}
+
+
+/* Tableau des ingrédients de recette */
+.recette-table th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.recette-table td {
+    font-size: 13px;
+    vertical-align: middle;
+}
+
+.recette-table input {
+    width: 100%;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    font-size: 13px;
+}
+
+.recette-table input[readonly] {
+    background: #f9fafb;
+    color: #374151;
+}
+
+.recette-unit {
+    margin-left: 4px;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.recette-footer-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+.recette-table td:last-child {
+    width: 60px;
+}
+/* =================== RESPONSIVE MOBILE (<= 768px) =================== */
+/* ==== Packs dynamiques sur la page Ventes ==== */
+
+#vente-packs-dyn {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pack-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: #f5f7fb;
+    border-radius: 6px;
+    border: 1px solid #e0e4f0;
+}
+
+.pack-line-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.pack-line-name {
+    font-weight: 600;
+}
+
+.pack-line-details {
+    font-size: 12px;
+    color: #666;
+}
+
+.pack-line input[type="number"] {
+    width: 70px;
+}
+
+/* petits boutons dans les cartes de ventes */
+.btn-xs {
+    padding: 4px 8px;
+    font-size: 11px;
+    margin-right: 4px;
+}
+
+@media (max-width: 768px) {
+
+    body {
+        font-size: 15px;
+    }
+
+    /* Sections : full largeur, plus simple comme FGS Bar */
+    section {
+        width: 100%;
+        margin: 8px 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 16px 12px;
+    }
+
+    .page {
+        padding-bottom: 60px;
+    }
+
+    /* NAVBAR : ruban défilable, tous les onglets restent dans le bleu */
+    .navbar {
+        padding: 8px 6px;
+        justify-content: flex-start;
+        gap: 6px;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    .navbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .navbar button {
+        font-size: 13px;
+        padding: 8px 10px;
+        flex: 0 0 auto; /* chaque bouton garde sa largeur */
+    }
+
+    /* Dashboard : 1 colonne sur mobile */
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dash-card p {
+        font-size: 20px;
+    }
+
+    /* Boutons principaux en pleine largeur sur mobile */
+    .btn,
+    .btn-primary,
+    .btn-danger,
+    .btn-secondary {
+        width: 100%;
+        text-align: center;
+    }
+}
+/* ---------------- HISTORIQUE ---------------- */
+.history-card {
+    margin: 12px 0;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+}
+
+.history-vendeur {
+    font-weight: 600;
+    font-size: 18px;
+}
+
+.history-date {
+    font-size: 13px;
+    color: #666;
+}
+
+.history-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 6px;
+}
+
+.history-pill {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #f5f7ff;
+    font-size: 12px;
+}
+
+.history-line {
+    font-size: 14px;
+    margin-top: 3px;
+}
+
