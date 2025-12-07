@@ -495,4 +495,13 @@ td {
     font-size: 14px;
     margin-top: 3px;
 }
+.app-footer {
+    margin-top: 24px;
+    padding: 8px 12px;
+    font-size: 11px;
+    text-align: center;
+    color: #9ca3af;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
 
