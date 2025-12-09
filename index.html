@@ -115,8 +115,8 @@
         <h1>BusinessFood Manager</h1>
         <p class="home-subtitle">
             Gérez vos ingrédients, recettes, produits finis, ventes et marges
-            en quelques clics, que vous fassiez des gaufres, des burgers,
-            des plats cuisinés ou des pâtisseries.
+            en quelques clics, que vous fassiez des boissons, des plats cuisinés
+            ou des pâtisseries.
         </p>
 
         <div class="home-signature">
@@ -125,102 +125,133 @@
         </div>
     </div>
 
-<div class="home-actions">
-    <div class="home-card">
-        <h2>Commencer une vente</h2>
-        <p>Enregistrer une nouvelle vente de produits finis, avec ou sans pack.</p>
-        <button class="btn btn-primary" onclick="showPage('ventes')">
-            ➜ Aller à la page Ventes
-        </button>
-    </div>
+    <div class="home-actions">
+        <div class="home-card">
+            <h2>Commencer une vente</h2>
+            <p>Enregistrer une nouvelle vente de produits finis, avec ou sans pack.</p>
+            <button class="btn btn-primary" onclick="showPage('ventes')">
+                ➜ Aller à la page Ventes
+            </button>
+        </div>
 
-    <div class="home-card">
-        <h2>Gérer mes recettes</h2>
-        <p>Créer ou modifier les recettes qui génèrent vos produits finis.</p>
-        <button class="btn btn-pink" onclick="showPage('recettes')">
-            ➜ Aller à la page Recettes
-        </button>
-    </div>
+        <div class="home-card">
+            <h2>Gérer mes recettes</h2>
+            <p>Créer ou modifier les recettes qui génèrent vos produits finis.</p>
+            <button class="btn btn-pink" onclick="showPage('recettes')">
+                ➜ Aller à la page Recettes
+            </button>
+        </div>
 
-    <div class="home-card">
-        <h2>Dashboard & Résultats</h2>
-        <p>Voir le chiffre d’affaires, les dépenses, le bénéfice et la capacité restante.</p>
-        <button class="btn btn-secondary" onclick="showPage('dashboard')">
-            ➜ Voir le tableau de bord
-        </button>
-    </div>
+        <div class="home-card">
+            <h2>Dashboard & Résultats</h2>
+            <p>Voir le chiffre d’affaires, les dépenses, le bénéfice et la capacité restante.</p>
+            <button class="btn btn-secondary" onclick="showPage('dashboard')">
+                ➜ Voir le tableau de bord
+            </button>
+        </div>
 
-    <!-- NOUVELLE CARTE TUTORIEL -->
-    <div class="home-card">
-        <h2>Prendre l’outil en main</h2>
-        <p>Suivre le tutoriel pas à pas pour apprendre à utiliser BusinessFood Manager.</p>
-        <button class="btn btn-yellow" onclick="showPage('tutoriel')">
-            ➜ Ouvrir le tutoriel
-        </button>
+        <!-- CARTE TUTORIEL -->
+        <div class="home-card">
+            <h2>Prendre l’outil en main</h2>
+            <p>Suivre le tutoriel pas à pas pour apprendre à utiliser BusinessFood Manager.</p>
+            <button class="btn btn-yellow" onclick="showPage('tutoriel')">
+                ➜ Ouvrir le tutoriel
+            </button>
+        </div>
     </div>
-</div>
-
 
 </section>
 
-    <!-- ======================= PAGE : DASHBOARD ======================= -->
-<section id="page-dashboard" class="page">
+<!-- ======================= PAGE : CONFIGURATION ======================= -->
+<section id="page-config" class="page hidden">
+  <div class="card">
+    <h1>Configuration initiale</h1>
+    <p class="subtitle">
+      Indique le type d'activité et comment tu appelles ton produit fini.
+      Exemple : boisson en bouteille, plat en assiette, pâtisserie à la pièce…
+    </p>
 
-    <h1>Tableau de Bord</h1>
+    <label>Type d'activité :</label>
+    <select id="cfg-activite">
+      <option value="Boissons">Boissons</option>
+      <option value="Plats">Plats cuisinés</option>
+      <option value="Pâtisseries">Pâtisseries</option>
+      <option value="Snacking">Snacking</option>
+      <option value="Mixte" selected>Mixte / Autre</option>
+    </select>
+
+    <label>Nom du produit fini (singulier) :</label>
+    <input type="text" id="cfg-produit-s" placeholder="Ex : bouteille, assiette, pièce">
+
+    <label>Nom du produit fini (pluriel) :</label>
+    <input type="text" id="cfg-produit-p" placeholder="Ex : bouteilles, assiettes, pièces">
+
+    <label>Exemple de produit :</label>
+    <input type="text" id="cfg-exemple" placeholder="Ex : Lossi ananas gingembre, Beignets fourrés">
+
+    <button id="btn-save-config" class="btn btn-primary">
+      Enregistrer la configuration
+    </button>
+  </div>
+</section>
+
+
+    <!-- ======================= PAGE : DASHBOARD ======================= -->
+<section id="page-dashboard" class="page hidden">
+
 
     <div class="dashboard-grid">
 
-        <!-- Produits finis vendus -->
-        <div class="dash-card">
-            <h3>Total produits finis vendus</h3>
-            <p id="dash-total-gaufres">0</p>
-        </div>
-
-        <!-- Chiffre d’affaires -->
-        <div class="dash-card">
-            <h3>Revenu total</h3>
-            <p id="dash-revenu-total">0 FCFA</p>
-        </div>
-
-        <!-- Dépenses -->
-        <div class="dash-card">
-            <h3>Dépenses totales</h3>
-            <p id="dash-depenses">0 FCFA</p>
-        </div>
-
-        <!-- Bénéfice net -->
-        <div class="dash-card">
-            <h3>Bénéfice net</h3>
-            <p id="dash-benefice-net">0 FCFA</p>
-        </div>
-
-                <!-- Stock de Produits Finis prêts -->
-        <div class="dash-card">
-            <h3>Stock actuel</h3>
-            <p id="dash-stock-restant">0</p>
-        </div>
-
-
-        <!-- Capacité Produits finis restants -->
-        <div class="dash-card">
-           <h3>Capacité restante</h3>
-<p id="dash-capacite">0 produits finis possibles</p>
-
-        </div>
-
-        <!-- Meilleur vendeur -->
-        <div class="dash-card big">
-            <h3>Meilleur vendeur</h3>
-            <p id="dash-best-vendeur">-</p>
-        </div>
-
-        <!-- Pack le plus vendu -->
-        <div class="dash-card big">
-            <h3>Pack le plus vendu</h3>
-            <p id="dash-best-pack">-</p>
-        </div>
-
+    <!-- Produits finis vendus -->
+    <div class="dash-card">
+        <h3 id="label-dashboard-total">Total produits finis vendus</h3>
+        <p id="dash-total-gaufres">0</p>
     </div>
+
+    <!-- Chiffre d’affaires -->
+    <div class="dash-card">
+        <h3>Revenu total</h3>
+        <p id="dash-revenu-total">0 FCFA</p>
+    </div>
+
+    <!-- Dépenses -->
+    <div class="dash-card">
+        <h3>Dépenses totales</h3>
+        <p id="dash-depenses">0 FCFA</p>
+    </div>
+
+    <!-- Bénéfice net -->
+    <div class="dash-card">
+        <h3>Bénéfice net</h3>
+        <p id="dash-benefice-net">0 FCFA</p>
+    </div>
+
+    <!-- Stock de Produits Finis prêts -->
+    <div class="dash-card">
+        <h3 id="label-dashboard-stock">Stock de produits finis restants</h3>
+        <p id="dash-stock-restant">0</p>
+    </div>
+
+    <!-- Capacité Produits finis restants -->
+    <div class="dash-card">
+       <h3 id="label-dashboard-capacite">Capacité restante (produits finis possibles)</h3>
+       <p id="dash-capacite">0 produits finis possibles</p>
+    </div>
+
+    <!-- Meilleur vendeur -->
+    <div class="dash-card big">
+        <h3>Meilleur vendeur</h3>
+        <p id="dash-best-vendeur">-</p>
+    </div>
+
+    <!-- Pack le plus vendu -->
+    <div class="dash-card big">
+        <h3>Pack le plus vendu</h3>
+        <p id="dash-best-pack">-</p>
+    </div>
+
+</div>
+
 
     <hr class="separator">
 
@@ -248,7 +279,7 @@
 <section id="page-packs" class="page hidden">
   <div class="card">
     <h1>Packs</h1>
-    <p class="subtitle">
+    <p class="subtitle" id="packs-subtitle">
       Crée des packs de produits finis pour la vente
       (ex : pack de 11, de 22, plateau dégustation, menu, etc.)
     </p>
@@ -258,7 +289,7 @@
     <label>Nom du pack :</label>
     <input type="text" id="pack-nom" placeholder="Ex : Pack 10 produits finis">
 
-    <label>Nombre de produits finis dans le pack :</label>
+    <label id="packs-nb-label">Nombre de produits finis dans le pack :</label>
     <input type="number" id="pack-qte" min="1" placeholder="Ex : 10">
 
     <label>Prix de vente du pack (FCFA) :</label>
@@ -272,6 +303,7 @@
     <div id="packs-list"></div>
   </div>
 </section>
+
 
 
 <!-- ======================= -->
@@ -291,14 +323,15 @@
         <!-- Formulaire création recette -->
         <h2>Créer une recette</h2>
 
-        <label>Nom de la recette :</label>
-        <input id="rec-nom" type="text" placeholder="Ex : Pâte vanille">
+<label>Nom de la recette :</label>
+<input id="rec-nom" type="text" placeholder="Ex : Pâte vanille">
 
-   <label>Nombre de produits finis obtenus :</label>
+<label>Nombre de produits finis obtenus :</label>
 <input id="rec-nb-gaufres" type="number" min="1" placeholder="Ex : 120">
 
 <label>Prix de vente d’un produit fini (FCFA) :</label>
 <input id="rec-prix-vente" type="number" min="0" placeholder="Ex : 200">
+
 
 <h3>Ingrédients utilisés dans la recette</h3>
 
@@ -490,7 +523,7 @@
             <p><strong>Onglet : Recettes</strong></p>
             <ol>
                 <li>Cliquer sur <strong>Recettes</strong>.</li>
-                <li>Donner un nom à la recette (ex : Pâte à gaufres de base, Burger classique, Plat du jour…).</li>
+                <li>Donner un nom à la recette (ex : Pâte à produits finis de base, Burger classique, Plat du jour…).</li>
                 <li>Dans le bloc <strong>Ingrédients de la recette</strong> :
                     <ul>
                         <li>Choisir un ingrédient dans la liste déroulante.</li>
@@ -500,7 +533,8 @@
                     </ul>
                 </li>
                 <li>Indiquer le nombre de <strong>produits finis</strong> obtenus avec cette recette
-                    (ex : 20 gaufres, 10 parts de gratin, 15 burgers…).</li>
+                    (ex : 20 produits finis
+, 10 parts de gratin, 15 burgers…).</li>
                 <li>Enregistrer la recette.</li>
             </ol>
             <p class="tuto-note">
@@ -514,7 +548,8 @@
             <p><strong>Onglet : Packs</strong></p>
             <ol>
                 <li>Cliquer sur <strong>Packs</strong>.</li>
-                <li>Créer un pack (ex : Pack 10 gaufres, Menu Burger + Boisson, Plateau dégustation…).</li>
+                <li>Créer un pack (ex : Pack 10 produits finis
+, Menu Burger + Boisson, Plateau dégustation…).</li>
                 <li>Indiquer :
                     <ul>
                         <li>Le nom du pack.</li>
