@@ -58,6 +58,76 @@ let stockGaufres = parseInt(localStorage.getItem("stockGaufres") || "0", 10) || 
 function saveStockGaufres() {
     localStorage.setItem("stockGaufres", String(stockGaufres));
 }
+/* ===============================
+   CONFIG PRODUIT – V5
+   =============================== */
+
+const CONFIG_KEY = "BFM_CONFIG_V1";
+
+const defaultConfig = {
+    typeActivite: "Mixte",
+    nomProduitSingulier: "produit fini",
+    nomProduitPluriel: "produits finis",
+    exempleProduit: ""
+};
+
+let config = { ...defaultConfig };
+
+function loadConfig() {
+    try {
+        const raw = localStorage.getItem(CONFIG_KEY);
+        if (raw) {
+            config = { ...defaultConfig, ...JSON.parse(raw) };
+        }
+    } catch (e) {
+        config = { ...defaultConfig };
+    }
+}
+
+function saveConfig() {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+}
+
+/* Remplit le formulaire de config si on revient dessus */
+function applyConfigToForm() {
+    const act  = document.getElementById("cfg-activite");
+    const sInp = document.getElementById("cfg-produit-s");
+    const pInp = document.getElementById("cfg-produit-p");
+    const exInp= document.getElementById("cfg-exemple");
+
+    if (act)  act.value  = config.typeActivite || "Mixte";
+    if (sInp) sInp.value = config.nomProduitSingulier || "";
+    if (pInp) pInp.value = config.nomProduitPluriel || "";
+    if (exInp) exInp.value = config.exempleProduit || "";
+}
+
+/* Applique les textes dynamiques dans l'UI */
+function applyConfigToUI() {
+    const s = config.nomProduitSingulier || "produit fini";
+    const p = config.nomProduitPluriel || "produits finis";
+
+    // Dashboard labels
+    const elTotal = document.getElementById("label-dashboard-total");
+    if (elTotal) elTotal.textContent = `Total ${p} vendus`;
+
+    const elStock = document.getElementById("label-dashboard-stock");
+    if (elStock) elStock.textContent = `Stock de ${p} restants`;
+
+    const elCap = document.getElementById("label-dashboard-capacite");
+    if (elCap) elCap.textContent = `Capacité restante (${p} possibles)`;
+
+    // Packs
+    const packsSubtitle = document.getElementById("packs-subtitle");
+    if (packsSubtitle) {
+        packsSubtitle.textContent =
+            `Crée des packs de ${p} pour la vente (ex : pack de 11, de 22, plateau, menu, etc.)`;
+    }
+
+    const packsNbLabel = document.getElementById("packs-nb-label");
+    if (packsNbLabel) {
+        packsNbLabel.textContent = `Nombre de ${p} dans le pack :`;
+    }
+}
 
 // Packs ajoutés à la vente en cours (avant d'enregistrer)
 let venteCourantePacks = [];
@@ -645,17 +715,62 @@ function deleteRecette(index) {
     refreshRecetteList();
 }
 
-/* =====================================================
-             CHARGEMENT AU DEMARRAGE
-   ===================================================== */
+/* =========================
+   INITIALISATION AU DÉMARRAGE
+   ========================= */
 
+document.addEventListener("DOMContentLoaded", () => {
+    // 1. Charger la config et la DB
+    loadConfig();
+    applyConfigToUI();
 
+    // 2. Attacher le bouton "Enregistrer la configuration"
+    const btnCfg = document.getElementById("btn-save-config");
+    if (btnCfg) {
+        btnCfg.addEventListener("click", () => {
+            const type = (document.getElementById("cfg-activite")?.value || "").trim();
+            const s    = (document.getElementById("cfg-produit-s")?.value || "").trim();
+            const p    = (document.getElementById("cfg-produit-p")?.value || "").trim();
+            const ex   = (document.getElementById("cfg-exemple")?.value || "").trim();
 
+            config.typeActivite        = type || defaultConfig.typeActivite;
+            config.nomProduitSingulier = s || defaultConfig.nomProduitSingulier;
+            config.nomProduitPluriel   = p || (s ? s + "s" : defaultConfig.nomProduitPluriel);
+            config.exempleProduit      = ex;
 
+            saveConfig();
+            applyConfigToUI();
+
+            alert("Configuration enregistrée. Tu peux maintenant utiliser BusinessFood Manager.");
+            showPage("home");
+        });
+    }
+
+    // 3. Pré-remplir le formulaire config si besoin
+    applyConfigToForm();
+
+    // 4. Initialiser les écrans déjà existants
     loadIngredientSelectForRecipe();
     refreshRecetteList();
     refreshRecIngredientsList();
-    showPage("home");
+    renderIngredients && renderIngredients();
+    renderVendeurs && renderVendeurs();
+    renderDepenses && renderDepenses();
+    renderPacks && renderPacks();
+    reloadVentesUI && reloadVentesUI();
+    renderHistorique && renderHistorique();
+    updateDashboard && updateDashboard();
+
+    // 5. Page de démarrage :
+    //    - si pas de config => page-config
+    //    - sinon => accueil
+    if (!localStorage.getItem(CONFIG_KEY)) {
+        showPage("config");
+    } else {
+        showPage("home");
+    }
+});
+
 
 /* ======================== NAVIGATION ======================== */
 
@@ -1073,19 +1188,22 @@ function shareWhatsapp() {
         totalCA += sTotal(s);
     });
 
+       const labelP = config?.nomProduitPluriel || "produits finis";
+
     let msg = "🔥 Résumé des ventes BusinessFood Manager\n";
-msg += "© 2025 – Takougang Eddy • Fotsi Global Services\n\n";
-    msg += `Total produits finis : ${totalGaufres}\n`;
-    msg += `Chiffre d'affaires : ${totalCA} FCFA\n\n`;
-    msg += "Détail des ventes :\n";
+    msg += "© 2025 – Takougang Eddy • Fotsi Global Services\n\n";
+    msg += `Total ${labelP} : ${totalGaufres}\n`;
+
 
     DB.sales.forEach(s => {
         const packsText = (Array.isArray(s.packs) && s.packs.length)
             ? s.packs.map(p => `${p.nom} × ${p.quantite}`).join(" · ")
             : "Aucun pack";
 
-        const nbGaufres = sTotalGaufres(s);
-        msg += `- ${s.date} ${s.heure || ""} – ${s.vendeur || "?"} – ${s.lieu || "-"} : ${nbGaufres} gaufres, ${packsText}, ${s.unites || 0} unités, ${sTotal(s)} FCFA\n`;
+               const nbGaufres = sTotalGaufres(s);
+        const labelP2 = config?.nomProduitPluriel || "produits finis";
+        msg += `- ${s.date} ${s.heure || ""} – ${s.vendeur || "?"} – ${s.lieu || "-"} : ${nbGaufres} ${labelP2}, ${packsText}, ${s.unites || 0} unités, ${sTotal(s)} FCFA\n`;
+
     });
 
     const url = "https://wa.me/?text=" + encodeURIComponent(msg);
