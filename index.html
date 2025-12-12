@@ -4,15 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BusinessFood Manager</title>
-    <link rel="stylesheet" href="style.css?v=3">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
+    <!-- CSS principal -->
+    <link rel="stylesheet" href="style.css?v=3">
+
+    <!-- Librairies pour export PDF / capture -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 
 <body>
 
-    <!-- ======================= NAVBAR ======================= -->
+<!-- ======================= NAVBAR ======================= -->
 <nav class="navbar">
     <div class="app-title">BusinessFood Manager</div>
     <div class="nav-links">
@@ -29,7 +32,188 @@
     </div>
 </nav>
 
-<!-- VENTES -->
+<!-- ======================= PAGE : ACCUEIL ======================= -->
+<section id="page-home" class="page">
+    <div class="home-hero card">
+        <h1>BusinessFood Manager</h1>
+        <p class="home-subtitle">
+            Gérez vos ingrédients, recettes, produits finis, ventes et marges
+            en quelques clics, que vous fassiez des boissons, des plats cuisinés
+            ou des pâtisseries.
+        </p>
+
+        <div class="home-signature">
+            Conçu par <strong>Takougang Eddy</strong> – Fotsi Global Services<br>
+            © 2025 – BusinessFood Manager
+        </div>
+    </div>
+
+    <!-- Carte : Configurer l'application -->
+    <div class="home-card">
+        <h2>Configurer BusinessFood Manager</h2>
+        <p>
+            Personnalise ton activité : type (boissons, plats, pâtisseries…),
+            nom de ton produit fini (bouteille, assiette, pièce…) et
+            une marque ou un nom de produit (ex : Lossi Ananas Menthe Betterave).
+        </p>
+        <button class="btn btn-success" id="btn-open-config-home">
+            ⚙ Configurer l'application
+        </button>
+    </div>
+
+    <!-- Carte : Commencer une vente -->
+    <div class="home-card">
+        <h2>Commencer une vente</h2>
+        <p>Enregistrer une nouvelle vente de produits finis, avec ou sans pack.</p>
+        <button class="btn btn-primary" onclick="showPage('ventes')">
+            ➜ Aller à la page Ventes
+        </button>
+    </div>
+
+    <!-- Carte : Gérer mes recettes -->
+    <div class="home-card">
+        <h2>Gérer mes recettes</h2>
+        <p>Créer ou modifier les recettes qui génèrent vos produits finis.</p>
+        <button class="btn btn-pink" onclick="showPage('recettes')">
+            ➜ Aller à la page Recettes
+        </button>
+    </div>
+
+    <!-- Carte : Dashboard -->
+    <div class="home-card">
+        <h2>Dashboard & Résultats</h2>
+        <p>Voir le chiffre d’affaires, les dépenses, le bénéfice et la capacité restante.</p>
+        <button class="btn btn-secondary" onclick="showPage('dashboard')">
+            ➜ Voir le tableau de bord
+        </button>
+    </div>
+
+    <!-- Carte : Tutoriel -->
+    <div class="home-card">
+        <h2>Prendre l’outil en main</h2>
+        <p>Suivre le tutoriel pas à pas pour apprendre à utiliser BusinessFood Manager.</p>
+        <button class="btn btn-yellow" onclick="showPage('tutoriel')">
+            ➜ Ouvrir le tutoriel
+        </button>
+    </div>
+</section>
+
+<!-- ======================= PAGE : CONFIGURATION ======================= -->
+<section id="page-config" class="page hidden">
+    <div class="card">
+        <h1>Configuration initiale</h1>
+        <p class="subtitle">
+            Indique le type d'activité et comment tu appelles ton produit fini.<br>
+            Exemple : boisson en bouteille, plat en assiette, pâtisserie à la pièce…
+        </p>
+
+        <label>Type d'activité :</label>
+        <input
+            type="text"
+            id="cfg-activite"
+            placeholder="Ex : Boissons, Plats cuisinés, Pâtisseries, Traiteur…">
+
+        <label>Nom du produit fini (singulier) :</label>
+        <input
+            type="text"
+            id="cfg-produit-s"
+            placeholder="Ex : bouteille, assiette, pièce">
+
+        <label>Nom du produit fini (pluriel) :</label>
+        <input
+            type="text"
+            id="cfg-produit-p"
+            placeholder="Ex : bouteilles, assiettes, pièces">
+
+        <label>Marque / nom du produit :</label>
+        <input
+            type="text"
+            id="cfg-exemple"
+            placeholder="Ex : Lossi Ananas Menthe Betterave, Beignets fourrés…">
+
+        <button id="btn-save-config" class="btn btn-primary">
+            Enregistrer la configuration
+        </button>
+    </div>
+</section>
+
+<!-- ======================= PAGE : DASHBOARD ======================= -->
+<section id="page-dashboard" class="page hidden">
+    <div class="dashboard-grid">
+
+        <!-- Produits finis vendus -->
+        <div class="dash-card">
+            <h3 id="label-dashboard-total">Total produits finis vendus</h3>
+            <p id="dash-total-gaufres">0</p>
+        </div>
+
+        <!-- Chiffre d’affaires -->
+        <div class="dash-card">
+            <h3>Revenu total</h3>
+            <p id="dash-revenu-total">0 FCFA</p>
+        </div>
+
+        <!-- Dépenses -->
+        <div class="dash-card">
+            <h3>Dépenses totales</h3>
+            <p id="dash-depenses">0 FCFA</p>
+        </div>
+
+        <!-- Bénéfice net -->
+        <div class="dash-card">
+            <h3>Bénéfice net</h3>
+            <p id="dash-benefice-net">0 FCFA</p>
+        </div>
+
+        <!-- Stock de produits finis restants -->
+        <div class="dash-card">
+            <h3 id="label-dashboard-stock">Stock de produits finis restants</h3>
+            <p id="dash-stock-restant">0 produits</p>
+        </div>
+
+        <!-- Capacité restante -->
+        <div class="dash-card">
+            <h3 id="label-dashboard-capacite">Capacité restante (produits finis possibles)</h3>
+            <p id="dash-capacite">0 produits</p>
+        </div>
+
+        <!-- Meilleur vendeur -->
+        <div class="dash-card big">
+            <h3>Meilleur vendeur</h3>
+            <p id="dash-best-vendeur">-</p>
+        </div>
+
+        <!-- Pack le plus vendu -->
+        <div class="dash-card big">
+            <h3>Pack le plus vendu</h3>
+            <p id="dash-best-pack">-</p>
+        </div>
+
+    </div>
+
+    <hr class="separator">
+
+    <h2>Statistiques avancées</h2>
+
+    <div class="dash-advanced">
+        <p id="dash-stats-ventes">Analyse ventes : -</p>
+        <p id="dash-stats-ingredients">Analyse ingrédients : -</p>
+    </div>
+
+    <div style="margin-top: 20px; text-align: right;">
+        <button class="btn btn-pink" onclick="shareDashboard()">
+            📲 Partager le tableau de bord
+        </button>
+
+        <div class="dash-reset">
+            <button class="btn btn-secondary" id="btn-reset-stock">
+                🔄 Réinitialiser le stock de produits finis
+            </button>
+        </div>
+    </div>
+</section>
+
+<!-- ======================= PAGE : VENTES ======================= -->
 <section id="page-ventes" class="page hidden">
     <div class="card">
         <h1>Nouvelle vente</h1>
@@ -53,7 +237,7 @@
                 <select id="vente-vendeur"></select>
             </div>
 
-                        <div>
+            <div>
                 <label>Lieu</label>
                 <input type="text" id="vente-lieu" placeholder="Marché, boutique, événement…" />
             </div>
@@ -61,8 +245,9 @@
             <div class="full-width">
                 <label>Packs vendus</label>
                 <p class="subtitle small">
-                    Les packs listés ici viennent de l’onglet <strong>Packs</strong>.
-                    Choisis un pack dans la liste, indique combien tu en as vendu, puis clique sur « Ajouter ».
+                    Les packs listés ici viennent de l’onglet <strong>Packs</strong>.<br>
+                    Choisis un pack dans la liste, indique combien tu en as vendu,
+                    puis clique sur « Ajouter ».
                 </p>
 
                 <!-- Ligne de sélection du pack -->
@@ -84,7 +269,6 @@
                 </div>
             </div>
 
-
             <div>
                 <label>Unités vendues (hors packs)</label>
                 <input type="number" id="vente-unites" min="0" value="0" />
@@ -96,7 +280,7 @@
             </div>
         </div>
 
-        <button class="btn-primary" id="btn-enregistrer-vente">
+        <button class="btn btn-primary" id="btn-enregistrer-vente">
             ➕ Enregistrer la vente
         </button>
     </div>
@@ -108,235 +292,110 @@
     </div>
 </section>
 
-<!-- ======================= PAGE : ACCUEIL ======================= -->
-<section id="page-home" class="page">
-
-    <div class="home-hero">
-        <h1>BusinessFood Manager</h1>
-        <p class="home-subtitle">
-            Gérez vos ingrédients, recettes, produits finis, ventes et marges
-            en quelques clics, que vous fassiez des boissons, des plats cuisinés
-            ou des pâtisseries.
-        </p>
-
-        <div class="home-signature">
-            Conçu par <strong>Takougang Eddy</strong> – Fotsi Global Services<br>
-            © 2025 – BusinessFood Manager
-        </div>
-    </div>
-
-    <div class="home-actions">
-        <div class="home-card">
-            <h2>Commencer une vente</h2>
-            <p>Enregistrer une nouvelle vente de produits finis, avec ou sans pack.</p>
-            <button class="btn btn-primary" onclick="showPage('ventes')">
-                ➜ Aller à la page Ventes
-            </button>
-        </div>
-
-        <div class="home-card">
-            <h2>Gérer mes recettes</h2>
-            <p>Créer ou modifier les recettes qui génèrent vos produits finis.</p>
-            <button class="btn btn-pink" onclick="showPage('recettes')">
-                ➜ Aller à la page Recettes
-            </button>
-        </div>
-
-        <div class="home-card">
-            <h2>Dashboard & Résultats</h2>
-            <p>Voir le chiffre d’affaires, les dépenses, le bénéfice et la capacité restante.</p>
-            <button class="btn btn-secondary" onclick="showPage('dashboard')">
-                ➜ Voir le tableau de bord
-            </button>
-        </div>
-
-        <!-- CARTE TUTORIEL -->
-        <div class="home-card">
-            <h2>Prendre l’outil en main</h2>
-            <p>Suivre le tutoriel pas à pas pour apprendre à utiliser BusinessFood Manager.</p>
-            <button class="btn btn-yellow" onclick="showPage('tutoriel')">
-                ➜ Ouvrir le tutoriel
-            </button>
-        </div>
-    </div>
-
-</section>
-
-<!-- ======================= PAGE : CONFIGURATION ======================= -->
-<section id="page-config" class="page hidden">
-  <div class="card">
-    <h1>Configuration initiale</h1>
-    <p class="subtitle">
-      Indique le type d'activité et comment tu appelles ton produit fini.
-      Exemple : boisson en bouteille, plat en assiette, pâtisserie à la pièce…
-    </p>
-
-    <label>Type d'activité :</label>
-    <select id="cfg-activite">
-      <option value="Boissons">Boissons</option>
-      <option value="Plats">Plats cuisinés</option>
-      <option value="Pâtisseries">Pâtisseries</option>
-      <option value="Snacking">Snacking</option>
-      <option value="Mixte" selected>Mixte / Autre</option>
-    </select>
-
-    <label>Nom du produit fini (singulier) :</label>
-    <input type="text" id="cfg-produit-s" placeholder="Ex : bouteille, assiette, pièce">
-
-    <label>Nom du produit fini (pluriel) :</label>
-    <input type="text" id="cfg-produit-p" placeholder="Ex : bouteilles, assiettes, pièces">
-
-    <label>Exemple de produit :</label>
-    <input type="text" id="cfg-exemple" placeholder="Ex : Lossi ananas gingembre, Beignets fourrés">
-
-    <button id="btn-save-config" class="btn btn-primary">
-      Enregistrer la configuration
-    </button>
-  </div>
-</section>
-
-
-    <!-- ======================= PAGE : DASHBOARD ======================= -->
-<section id="page-dashboard" class="page hidden">
-
-
-    <div class="dashboard-grid">
-
-    <!-- Produits finis vendus -->
-    <div class="dash-card">
-        <h3 id="label-dashboard-total">Total produits finis vendus</h3>
-        <p id="dash-total-gaufres">0</p>
-    </div>
-
-    <!-- Chiffre d’affaires -->
-    <div class="dash-card">
-        <h3>Revenu total</h3>
-        <p id="dash-revenu-total">0 FCFA</p>
-    </div>
-
-    <!-- Dépenses -->
-    <div class="dash-card">
-        <h3>Dépenses totales</h3>
-        <p id="dash-depenses">0 FCFA</p>
-    </div>
-
-    <!-- Bénéfice net -->
-    <div class="dash-card">
-        <h3>Bénéfice net</h3>
-        <p id="dash-benefice-net">0 FCFA</p>
-    </div>
-
-    <!-- Stock de Produits Finis prêts -->
-    <div class="dash-card">
-        <h3 id="label-dashboard-stock">Stock de produits finis restants</h3>
-        <p id="dash-stock-restant">0</p>
-    </div>
-
-    <!-- Capacité Produits finis restants -->
-    <div class="dash-card">
-       <h3 id="label-dashboard-capacite">Capacité restante (produits finis possibles)</h3>
-       <p id="dash-capacite">0 produits finis possibles</p>
-    </div>
-
-    <!-- Meilleur vendeur -->
-    <div class="dash-card big">
-        <h3>Meilleur vendeur</h3>
-        <p id="dash-best-vendeur">-</p>
-    </div>
-
-    <!-- Pack le plus vendu -->
-    <div class="dash-card big">
-        <h3>Pack le plus vendu</h3>
-        <p id="dash-best-pack">-</p>
-    </div>
-
-</div>
-
-
-    <hr class="separator">
-
-        <h2>Statistiques avancées</h2>
-
-    <div class="dash-advanced">
-        <p id="dash-stats-ventes">Analyse ventes : -</p>
-        <p id="dash-stats-ingredients">Analyse ingrédients : -</p>
-    </div>
-
-    <div style="margin-top: 20px; text-align: right;">
-        <button class="btn btn-pink" onclick="shareDashboard()">
-            📲 Partager le tableau de bord
-        </button>
-    </div>
-
-</section>
-
-
-
-
-    <!-- ======================= -->
-<!--   PAGE : PACKS          -->
-<!-- ======================= -->
+<!-- ======================= PAGE : PACKS ======================= -->
 <section id="page-packs" class="page hidden">
-  <div class="card">
-    <h1>Packs</h1>
-    <p class="subtitle" id="packs-subtitle">
-      Crée des packs de produits finis pour la vente
-      (ex : pack de 11, de 22, plateau dégustation, menu, etc.)
-    </p>
-
-    <h2>Créer un nouveau pack</h2>
-
-    <label>Nom du pack :</label>
-    <input type="text" id="pack-nom" placeholder="Ex : Pack 10 produits finis">
-
-    <label id="packs-nb-label">Nombre de produits finis dans le pack :</label>
-    <input type="number" id="pack-qte" min="1" placeholder="Ex : 10">
-
-    <label>Prix de vente du pack (FCFA) :</label>
-    <input type="number" id="pack-prix" min="0" placeholder="Ex : 2500">
-
-    <button id="btn-add-pack" class="btn btn-primary">Créer le pack</button>
-
-    <hr>
-
-    <h2>Packs existants</h2>
-    <div id="packs-list"></div>
-  </div>
-</section>
-
-
-
-<!-- ======================= -->
-<!--      PAGE : RECETTES    -->
-<!-- ======================= -->
-<section id="page-recettes" class="page hidden">
-
-    <div class="card">
-        <h1>Recettes(sur la base que tu t'es fixée niveau préparation)</h1>
+    <div class="container">
+        <h2>Packs</h2>
         <p class="subtitle">
-            Déclare ici les quantités réelles utilisées pour préparer ta pâte, ta marmite, ta composition... 
-            Le système calculera automatiquement le coût total et le coût de revient par produit fini.
-
-
+            Crée des packs de <strong>produits finis</strong> combinant plusieurs recettes :
+            par exemple <em>2 crêpes chocolat + 2 crêpes miel</em> ou
+            <em>10 gaufres + 1 boisson ananas gingembre</em>.
         </p>
 
-        <!-- Formulaire création recette -->
+        <div class="grid-2">
+            <!-- Création d'un pack -->
+            <div class="card">
+                <h3>Créer un nouveau pack</h3>
+
+                <label>Nom du pack :</label>
+                <input id="pack-nom" type="text" class="form-control"
+                       placeholder="Ex : Formule brunch 10 gaufres + 1 boisson">
+
+                <h4>Contenu du pack</h4>
+                <p class="small">
+                    Choisis une recette, indique combien de produits finis de cette recette
+                    sont inclus dans le pack.
+                </p>
+
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Recette</th>
+                            <th>Quantité</th>
+                            <th>Coût ligne</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="pack-items-body">
+                        <!-- lignes ajoutées en JS -->
+                    </tbody>
+                </table>
+
+                <button id="btn-pack-add-row" type="button" class="btn btn-secondary">
+                    + Ajouter une ligne
+                </button>
+
+                <p style="margin-top:12px;">
+                    <strong>Coût total du pack : </strong>
+                    <span id="pack-cost">0 FCFA</span>
+                </p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Marge souhaitée (%) :</label>
+                        <input id="pack-margin" type="number" min="0" max="90"
+                               value="30" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Prix de vente du pack (FCFA) :</label>
+                        <input id="pack-price" type="number" min="0" class="form-control"
+                               placeholder="Laisse vide pour auto-calcul">
+                    </div>
+                </div>
+
+                <button id="btn-add-pack" type="button" class="btn btn-primary" style="margin-top:12px;">
+                    ➜ Créer le pack
+                </button>
+
+                <p class="small" style="margin-top:8px;">
+                    ⚠️ Le logiciel bloque la création d’un pack vendu à perte
+                    (prix de vente &lt; coût total).
+                </p>
+            </div>
+
+            <!-- Packs existants -->
+            <div class="card">
+                <h3>Packs existants</h3>
+                <div id="packs-list">
+                    <!-- rendu JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ======================= PAGE : RECETTES ======================= -->
+<section id="page-recettes" class="page hidden">
+    <div class="card">
+        <h1>Recettes (sur la base que tu t'es fixée niveau préparation)</h1>
+        <p class="subtitle">
+            Déclare ici les quantités réelles utilisées pour préparer ta pâte, ta marmite, ta composition...
+            Le système calculera automatiquement le coût total et le coût de revient par produit fini.
+        </p>
+
         <h2>Créer une recette</h2>
 
-<label>Nom de la recette :</label>
-<input id="rec-nom" type="text" placeholder="Ex : Pâte vanille">
+        <label>Nom de la recette :</label>
+        <input id="rec-nom" type="text" placeholder="Ex : Pâte vanille">
 
-<label>Nombre de produits finis obtenus :</label>
-<input id="rec-nb-gaufres" type="number" min="1" placeholder="Ex : 120">
+        <label>Nombre de produits finis obtenus :</label>
+        <input id="rec-nb-gaufres" type="number" min="1" placeholder="Ex : 120">
 
-<label>Prix de vente d’un produit fini (FCFA) :</label>
-<input id="rec-prix-vente" type="number" min="0" placeholder="Ex : 200">
+        <label>Prix de vente d’un produit fini (FCFA) :</label>
+        <input id="rec-prix-vente" type="number" min="0" placeholder="Ex : 200">
 
+        <h3>Ingrédients utilisés dans la recette</h3>
 
-<h3>Ingrédients utilisés dans la recette</h3>
-
-
-        <!-- Ajout d'ingrédient -->
         <div class="recette-add-ing">
             <label>Ingrédient :</label>
             <select id="rec-ingredient-select">
@@ -362,7 +421,6 @@
 
         <br>
 
-        <!-- Liste ingrédients recette -->
         <div class="card">
             <h3>Ingrédients ajoutés :</h3>
             <div id="rec-ingredients-list">
@@ -372,23 +430,21 @@
 
         <br>
 
-        <button id="btn-save-recipe" class="btn btn-primary">Enregistrer la recette</button>
+        <button id="btn-save-recipe" class="btn btn-primary">
+            Enregistrer la recette
+        </button>
     </div>
 
     <hr>
 
-    <!-- Liste des recettes existantes -->
     <div class="card">
         <h2>Recettes enregistrées</h2>
         <div id="rec-liste"></div>
     </div>
-
 </section>
-
 
 <!-- ======================= PAGE : INGRÉDIENTS ======================= -->
 <section id="page-ingredients" class="page hidden">
-
     <h1>Ingrédients – Stock & Coût</h1>
 
     <h2>Ajouter un ingrédient au stock</h2>
@@ -402,7 +458,6 @@
     <label>Quantité :</label>
     <input type="number" id="ing-qt" min="0" placeholder="Ex : 1000">
 
-
     <label>Unité du paquet :</label>
     <select id="ing-unit">
         <option value="g">g</option>
@@ -412,6 +467,7 @@
         <option value="piece">pièce</option>
         <option value="sachet">sachet</option>
     </select>
+
     <label>Seuil d'alerte (même unité) :</label>
     <input type="number" id="ing-seuil" min="0" placeholder="Ex : 200">
 
@@ -421,68 +477,94 @@
 
     <h2>Stock actuel</h2>
     <div id="ingredients-list"></div>
-
 </section>
 
+<!-- ======================= PAGE : VENDEURS ======================= -->
+<section id="page-vendeurs" class="page hidden">
+    <h1>Vendeurs</h1>
 
+    <h2>Ajouter un vendeur</h2>
+    <label>Nom :</label>
+    <input id="vendeur-nom" placeholder="Prénom">
 
-    <!-- ======================= PAGE : VENDEURS ======================= -->
-    <section id="page-vendeurs" class="page hidden">
-        <h1>Vendeurs</h1>
+    <label>Commission (% ou montant fixe) :</label>
+    <input id="vendeur-commission" placeholder="Ex : 500 (montant fixe)">
 
-        <h2>Ajouter un vendeur</h2>
-        <label>Nom :</label>
-        <input id="vendeur-nom" placeholder="Prénom">
+    <button class="btn btn-primary" onclick="addVendeur()">
+        Ajouter le Vendeur
+    </button>
 
-        <label>Commission (% ou montant fixe) :</label>
-        <input id="vendeur-commission" placeholder="Ex : 500 (montant fixe)">
+    <h2>Liste des vendeurs</h2>
+    <div id="vendeurs-list"></div>
+</section>
 
-        <button class="btn btn-primary" onclick="addVendeur()">Ajouter le Vendeur</button>
+<!-- ======================= PAGE : DÉPENSES ======================= -->
+<section id="page-depenses" class="page hidden">
+    <div class="container">
+        <h2>Dépenses</h2>
+        <p class="subtitle">
+            Enregistre tes dépenses (ingrédients, gaz, transport, salaire…).
+            Tu peux choisir la <strong>date réelle</strong> de la dépense et
+            corriger une ligne en cas d’erreur.
+        </p>
 
-        <h2>Liste des vendeurs</h2>
-        <div id="vendeurs-list"></div>
-    </section>
+        <div class="grid-2">
+            <!-- Formulaire -->
+            <div class="card">
+                <h3>Ajouter / modifier une dépense</h3>
 
+                <input type="hidden" id="dep-index" value="-1">
 
+                <label>Date de la dépense :</label>
+                <input id="dep-date" type="date" class="form-control">
 
-    <!-- ======================= PAGE : DÉPENSES ======================= -->
-    <section id="page-depenses" class="page hidden">
-        <h1>Dépenses du Jour</h1>
+                <label>Catégorie / type de dépense :</label>
+                <input id="dep-cat" type="text" class="form-control"
+                       placeholder="Ex : Gaz, transport, loyer…">
 
-        <label>Catégorie :</label>
-        <input id="dep-cat" placeholder="Ex : Transport, Farine…">
+                <label>Montant (FCFA) :</label>
+                <input id="dep-montant" type="number" min="0" class="form-control"
+                       placeholder="Ex : 2000">
 
-        <label>Montant (FCFA) :</label>
-        <input type="number" id="dep-montant" min="50">
+                <label>Note (facultatif) :</label>
+                <input id="dep-note" type="text" class="form-control"
+                       placeholder="Ex : achat gaz pour la journée">
 
-        <label>Commentaire :</label>
-        <textarea id="dep-note" placeholder="Détails optionnels"></textarea>
+                <div style="margin-top:12px;">
+                    <button id="btn-add-depense" type="button" class="btn btn-primary">
+                        Enregistrer la dépense
+                    </button>
+                    <button id="btn-cancel-depense-edit" type="button"
+                            class="btn btn-secondary" style="margin-left:8px;">
+                        Annuler la modification
+                    </button>
+                </div>
+            </div>
 
-        <button class="btn btn-danger" onclick="addDepense()">Ajouter Dépense</button>
+            <!-- Liste -->
+            <div class="card">
+                <h3>Dépenses enregistrées</h3>
+                <div id="depenses-list">
+                    <!-- rendu JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
 
-        <h2>Dépenses enregistrées</h2>
-        <div id="depenses-list"></div>
-    </section>
+<!-- ======================= PAGE : HISTORIQUE ======================= -->
+<section id="page-historique" class="page hidden">
+    <h1>Historique</h1>
 
+    <div id="historique-list"></div>
 
+    <button class="btn btn-yellow" onclick="exportPDF()">Exporter PDF</button>
+    <button class="btn btn-primary" onclick="exportCSV()">Exporter CSV</button>
+    <button class="btn btn-pink" onclick="shareWhatsapp()">Partager WhatsApp</button>
+</section>
 
-    <!-- ======================= PAGE : HISTORIQUE ======================= -->
-    <section id="page-historique" class="page hidden">
-        <h1>Historique</h1>
-
-        <div id="historique-list"></div>
-
-        <button class="btn btn-yellow" onclick="exportPDF()">Exporter PDF</button>
-        <button class="btn btn-primary" onclick="exportCSV()">Exporter CSV</button>
-        <button class="btn btn-pink" onclick="shareWhatsapp()">Partager WhatsApp</button>
-    </section>
-
-
-    <!-- ======================= SCRIPTS ======================= -->
-    <script src="app.js"></script>
-    <!-- ======================= PAGE : TUTORIEL ======================= -->
+<!-- ======================= PAGE : TUTORIEL ======================= -->
 <section id="page-tutoriel" class="page hidden">
-
     <h1>Tutoriel – Prendre en main BusinessFood Manager</h1>
     <p class="tuto-intro">
         Ce guide explique comment utiliser l’application au quotidien.
@@ -533,8 +615,7 @@
                     </ul>
                 </li>
                 <li>Indiquer le nombre de <strong>produits finis</strong> obtenus avec cette recette
-                    (ex : 20 produits finis
-, 10 parts de gratin, 15 burgers…).</li>
+                    (ex : 20 produits finis, 10 parts de gratin, 15 burgers…).</li>
                 <li>Enregistrer la recette.</li>
             </ol>
             <p class="tuto-note">
@@ -548,8 +629,7 @@
             <p><strong>Onglet : Packs</strong></p>
             <ol>
                 <li>Cliquer sur <strong>Packs</strong>.</li>
-                <li>Créer un pack (ex : Pack 10 produits finis
-, Menu Burger + Boisson, Plateau dégustation…).</li>
+                <li>Créer un pack (ex : Pack 10 produits finis, Menu Burger + Boisson, Plateau dégustation…).</li>
                 <li>Indiquer :
                     <ul>
                         <li>Le nom du pack.</li>
@@ -645,12 +725,13 @@
         💡 En résumé : <strong>Ingrédients → Recettes → Packs → Ventes → Dashboard & Historique</strong>.<br>
         Une fois la base configurée, tu n’as plus qu’à saisir les ventes chaque jour.
     </p>
-
 </section>
 
 <footer class="app-footer">
     BusinessFood Manager – © 2025 Takougang Eddy • Fotsi Global Services
-    
 </footer>
+
+<!-- ======================= SCRIPTS ======================= -->
+<script src="app.js"></script>
 </body>
 </html>
