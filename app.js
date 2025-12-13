@@ -1,4 +1,4 @@
-/* BusinessFood Manager — app.js (v4 solide + édition recettes + stock packs + suggestion marge live)
+/* BusinessFood Manager — app.js (v6 consolidé: édition recettes + déduction xN + packs stock + profils export/import)
    - Basé sur les IDs / pages de BusinessFood-Manager.html
    - Stockage local (localStorage)
    - Navigation, config, ingrédients, recettes (production), packs, ventes, dépenses, dashboard, historique, exports
@@ -97,6 +97,64 @@
   ========================== */
   const STORE_KEY = "BFM_STATE_V3";
 
+  const PROFILES_KEY = "BFM_PROFILES_V1";
+
+    function nowISO() { return new Date().toISOString(); }
+
+    function loadProfilesIndex() {
+      try {
+        const raw = localStorage.getItem(PROFILES_KEY);
+        if (raw) {
+          const idx = JSON.parse(raw);
+          if (idx && Array.isArray(idx.profiles) && idx.profiles.length) {
+            // compat: s'assurer que default existe
+            if (!idx.profiles.some(p => p.id === "default")) {
+              idx.profiles.unshift({ id: "default", name: "Principal", storeKey: STORE_KEY, createdAt: nowISO(), updatedAt: nowISO() });
+            }
+            if (!idx.current) idx.current = "default";
+            return idx;
+          }
+        }
+      } catch (e) { console.warn("BFM: loadProfilesIndex error", e); }
+
+      // Premier lancement (ou pas d'index) : on crée un profil "Principal".
+      return {
+        version: 1,
+        current: "default",
+        profiles: [{ id: "default", name: "Principal", storeKey: STORE_KEY, createdAt: nowISO(), updatedAt: nowISO() }]
+      };
+    }
+
+    function saveProfilesIndex() {
+      try { localStorage.setItem(PROFILES_KEY, JSON.stringify(profilesIndex)); }
+      catch (e) { console.warn("BFM: saveProfilesIndex error", e); }
+    }
+
+    function profileStoreKey(id) {
+      if (id === "default") return STORE_KEY; // compat historique
+      return `${STORE_KEY}__${id}`;
+    }
+
+    let profilesIndex = loadProfilesIndex();
+
+    function getActiveProfile() {
+      const id = profilesIndex.current || "default";
+      return profilesIndex.profiles.find(p => p.id === id) || profilesIndex.profiles[0];
+    }
+
+    function getActiveStoreKey() {
+      const p = getActiveProfile();
+      return (p && p.storeKey) ? p.storeKey : STORE_KEY;
+    }
+
+    function touchProfile(id) {
+      const p = profilesIndex.profiles.find(x => x.id === id);
+      if (p) p.updatedAt = nowISO();
+      saveProfilesIndex();
+    }
+
+
+
   const defaultState = () => ({
     version: 3,
     config: {
@@ -114,9 +172,9 @@
     inventory: { finishedUnits: 0, finishedValue: 0 } // valeur au coût (COGS)
   });
 
-  function loadState() {
+  function loadState(storeKey = getActiveStoreKey()) {
     try {
-      const raw = localStorage.getItem(STORE_KEY);
+      const raw = localStorage.getItem(storeKey);
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
       const base = defaultState();
@@ -139,8 +197,9 @@
     }
   }
 
-  function saveState() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  function saveState(storeKey = getActiveStoreKey()) {
+    try { localStorage.setItem(storeKey, JSON.stringify(state));
+      touchProfile(getActiveProfile()?.id || "default"); }
     catch (e) { console.warn("BFM: saveState error", e); }
   }
 
@@ -180,13 +239,13 @@
 
     // rafraîchissements ciblés
     if (pageName === "ingredients") renderIngredients();
-    if (pageName === "recettes") { refreshRecipeIngredientSelect(); renderRecipes(); }
+    if (pageName === "recettes") { ensureRecipeDeductUI(); refreshRecipeIngredientSelect(); renderRecipes(); }
     if (pageName === "packs") { refreshPackRecipeOptions(); renderPackDraft(); renderPacks(); refreshSalePackSelect(); }
     if (pageName === "ventes") { refreshVendorsSelect(); refreshSalePackSelect(); renderSalesOfDay(); }
     if (pageName === "depenses") renderExpenses();
     if (pageName === "dashboard") renderDashboard();
     if (pageName === "historique") renderHistorique();
-    if (pageName === "config") renderConfig();
+    if (pageName === "config") { renderConfig(); ensureDataManagerUI(); }
   }
 
   // Expose pour les onclick du HTML
@@ -212,6 +271,356 @@
 
     if ($("dash-stock-restant")) $("dash-stock-restant").textContent = `${state.inventory.finishedUnits} ${pP}`;
   }
+  function ensureDataManagerUI() {
+      const page = $("page-config");
+      if (!page) return;
+      if ($("bfm-data-manager")) { refreshProfilesUI(); return; }
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.id = "bfm-data-manager";
+      card.style.marginTop = "14px";
+      card.innerHTML = `
+        <h2>Gestion des données (sauvegarde / export / import)</h2>
+        <p class="subtitle small" style="margin-bottom:10px;">
+          Ici tu peux gérer plusieurs <strong>profils</strong> (plusieurs configurations complètes) et exporter/importer tes données.
+          Chaque profil contient : config + ingrédients + recettes + packs + ventes + dépenses.
+        </p>
+
+        <div class="form-grid">
+          <div>
+            <label>Profil actif</label>
+            <select id="profile-select"></select>
+            <div class="small" style="opacity:.8;margin-top:-8px;">
+              Actuel : <strong id="profile-active-label">-</strong>
+            </div>
+          </div>
+
+          <div>
+            <label>Actions profil</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary" id="btn-profile-new">➕ Nouveau</button>
+              <button type="button" class="btn btn-secondary" id="btn-profile-dup">📌 Dupliquer</button>
+              <button type="button" class="btn btn-secondary" id="btn-profile-rename">✏️ Renommer</button>
+              <button type="button" class="btn btn-pink" id="btn-profile-delete">🗑️ Supprimer</button>
+            </div>
+          </div>
+
+          <div>
+            <label>Sauvegarde</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-primary" id="btn-save-now">💾 Sauvegarder maintenant</button>
+            </div>
+            <div class="small" style="opacity:.8;margin-top:6px;">
+              (L'app sauvegarde déjà automatiquement, mais ce bouton te donne un point de contrôle.)
+            </div>
+          </div>
+
+          <div>
+            <label>Export / Import (profil actif)</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary" id="btn-export-profile">⬇️ Export profil</button>
+              <button type="button" class="btn btn-secondary" id="btn-import-profile">⬆️ Import profil</button>
+            </div>
+          </div>
+
+          <div>
+            <label>Export / Import (TOUT)</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary" id="btn-export-all">⬇️ Export TOUT</button>
+              <button type="button" class="btn btn-secondary" id="btn-import-all">⬆️ Import TOUT</button>
+            </div>
+            <div class="small" style="opacity:.8;margin-top:6px;">
+              Export TOUT = tous les profils dans un seul fichier. Import TOUT peut fusionner ou remplacer.
+            </div>
+          </div>
+        </div>
+      `;
+
+      page.appendChild(card);
+
+      // File inputs cachés (profil / bundle)
+      const fileProfile = document.createElement("input");
+      fileProfile.type = "file";
+      fileProfile.accept = "application/json";
+      fileProfile.id = "file-import-profile";
+      fileProfile.style.display = "none";
+
+      const fileAll = document.createElement("input");
+      fileAll.type = "file";
+      fileAll.accept = "application/json";
+      fileAll.id = "file-import-all";
+      fileAll.style.display = "none";
+
+      page.appendChild(fileProfile);
+      page.appendChild(fileAll);
+
+      // Bind events
+      on($("profile-select"), "change", (e) => switchProfile(String(e.target.value || "default")));
+      on($("btn-profile-new"), "click", () => createProfile(false));
+      on($("btn-profile-dup"), "click", () => createProfile(true));
+      on($("btn-profile-rename"), "click", renameProfile);
+      on($("btn-profile-delete"), "click", deleteProfile);
+
+      on($("btn-save-now"), "click", () => { saveState(); toast("Sauvegarde effectuée ✅"); });
+
+      on($("btn-export-profile"), "click", exportActiveProfile);
+      on($("btn-import-profile"), "click", () => $("file-import-profile")?.click());
+      on($("file-import-profile"), "change", importProfileFromFile);
+
+      on($("btn-export-all"), "click", exportAllProfiles);
+      on($("btn-import-all"), "click", () => $("file-import-all")?.click());
+      on($("file-import-all"), "change", importAllFromFile);
+
+      refreshProfilesUI();
+    }
+
+    function switchProfile(profileId) {
+      const id = profileId || "default";
+      if (id === (profilesIndex.current || "default")) return;
+
+      // 1) Sauvegarder le profil actuel
+      saveState();
+
+      // 2) Switch
+      profilesIndex.current = id;
+      // s'assurer storeKey existe
+      const p = profilesIndex.profiles.find(x => x.id === id);
+      if (p) p.storeKey = profileStoreKey(p.id);
+      saveProfilesIndex();
+
+      // 3) Charger nouvel état
+      state = loadState(profileStoreKey(id));
+      // normaliser champs
+      try {
+        if (Array.isArray(state.recipes)) state.recipes.forEach(r => {
+          if (typeof r.remainingQty !== "number") r.remainingQty = toNum(r.producedQty, 0);
+        });
+      } catch {}
+
+      // reset UI
+      initDefaults();
+      refreshProfilesUI();
+      showPage("home");
+      toast(`Profil activé : ${getActiveProfile()?.name || "Principal"} ✅`);
+    }
+
+    function uniqueProfileName(baseName) {
+      const base = safeText(baseName) || "Profil";
+      let name = base;
+      let n = 2;
+      const exists = (nm) => profilesIndex.profiles.some(p => String(p.name).toLowerCase() === String(nm).toLowerCase());
+      while (exists(name)) { name = `${base} (${n++})`; }
+      return name;
+    }
+
+    function createProfile(cloneCurrent) {
+      const wanted = prompt("Nom du nouveau profil :", cloneCurrent ? `Copie - ${getActiveProfile()?.name || "Principal"}` : "Nouveau profil");
+      if (wanted == null) return;
+      const name = uniqueProfileName(wanted);
+
+      const id = uid();
+      const storeKey = profileStoreKey(id);
+
+      const newState = cloneCurrent ? JSON.parse(JSON.stringify(state)) : defaultState();
+      // mettre une trace de version si besoin
+      newState.version = 3;
+
+      try { localStorage.setItem(storeKey, JSON.stringify(newState)); }
+      catch (e) { console.warn("BFM: createProfile save error", e); return toast("Impossible de créer le profil (stockage plein ?)."); }
+
+      profilesIndex.profiles.push({ id, name, storeKey, createdAt: nowISO(), updatedAt: nowISO() });
+      profilesIndex.current = id;
+      saveProfilesIndex();
+
+      state = newState;
+      initDefaults();
+      ensureDataManagerUI();
+      refreshProfilesUI();
+      showPage("home");
+      toast(`Profil créé : ${name} ✅`);
+    }
+
+    function renameProfile() {
+      const p = getActiveProfile();
+      if (!p) return;
+      const wanted = prompt("Nouveau nom du profil :", p.name);
+      if (wanted == null) return;
+      p.name = uniqueProfileName(wanted);
+      touchProfile(p.id);
+      refreshProfilesUI();
+      toast("Profil renommé ✅");
+    }
+
+    function deleteProfile() {
+      const p = getActiveProfile();
+      if (!p) return;
+
+      if (p.id === "default" && profilesIndex.profiles.length === 1) {
+        return toast("Impossible : il faut garder au moins un profil.");
+      }
+
+      const ok = confirm(`Supprimer le profil "${p.name}" ?\n\n⚠️ Ça supprime aussi toutes ses données.`);
+      if (!ok) return;
+
+      // supprimer data key
+      try { localStorage.removeItem(profileStoreKey(p.id)); } catch {}
+
+      // retirer index
+      profilesIndex.profiles = profilesIndex.profiles.filter(x => x.id !== p.id);
+      if (!profilesIndex.profiles.length) {
+        profilesIndex.profiles = [{ id: "default", name: "Principal", storeKey: STORE_KEY, createdAt: nowISO(), updatedAt: nowISO() }];
+      }
+      profilesIndex.current = profilesIndex.profiles[0].id;
+      saveProfilesIndex();
+
+      // charger profil restant
+      state = loadState(profileStoreKey(profilesIndex.current));
+      initDefaults();
+      refreshProfilesUI();
+      showPage("home");
+      toast("Profil supprimé.");
+    }
+
+    function exportActiveProfile() {
+      const p = getActiveProfile();
+      if (!p) return;
+
+      // sauvegarder avant export
+      saveState();
+
+      const payload = {
+        kind: "BFM_PROFILE",
+        version: 1,
+        exportedAt: nowISO(),
+        profile: { id: p.id, name: p.name },
+        state
+      };
+      const filename = `BFM_profil_${p.name.replace(/[^a-z0-9_-]+/gi,"_")}_${dateISO()}.json`;
+      downloadText(filename, JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+      toast("Export profil OK ✅");
+    }
+
+    function exportAllProfiles() {
+      // sauvegarder profil actif
+      saveState();
+
+      const bundle = {
+        kind: "BFM_BUNDLE",
+        version: 1,
+        exportedAt: nowISO(),
+        current: profilesIndex.current || "default",
+        profiles: profilesIndex.profiles.map(p => {
+          const k = profileStoreKey(p.id);
+          let st = null;
+          try {
+            const raw = localStorage.getItem(k);
+            st = raw ? JSON.parse(raw) : null;
+          } catch { st = null; }
+          return { id: p.id, name: p.name, state: st || defaultState() };
+        })
+      };
+
+      const filename = `BFM_TOUT_${dateISO()}.json`;
+      downloadText(filename, JSON.stringify(bundle, null, 2), "application/json;charset=utf-8");
+      toast("Export TOUT OK ✅");
+    }
+
+    function readJsonFile(file, cb) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try { cb(JSON.parse(String(reader.result || "{}"))); }
+        catch { toast("Fichier JSON invalide."); }
+      };
+      reader.readAsText(file);
+    }
+
+    function importProfileFromFile(e) {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+
+      readJsonFile(file, (data) => {
+        if (!data || data.kind !== "BFM_PROFILE" || !data.state) {
+          return toast("Ce fichier n'est pas un export de profil BusinessFood Manager.");
+        }
+
+        const importedName = safeText(data.profile?.name) || "Profil importé";
+        const name = uniqueProfileName(importedName);
+
+        const id = uid();
+        const storeKey = profileStoreKey(id);
+
+        try { localStorage.setItem(storeKey, JSON.stringify(data.state)); }
+        catch (e) { console.warn("BFM: import profile save", e); return toast("Import impossible (stockage plein ?)."); }
+
+        profilesIndex.profiles.push({ id, name, storeKey, createdAt: nowISO(), updatedAt: nowISO() });
+        profilesIndex.current = id;
+        saveProfilesIndex();
+
+        state = loadState(storeKey);
+        initDefaults();
+        refreshProfilesUI();
+        showPage("home");
+        toast(`Profil importé : ${name} ✅`);
+      });
+    }
+
+    function importAllFromFile(e) {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+
+      readJsonFile(file, (data) => {
+        if (!data || data.kind !== "BFM_BUNDLE" || !Array.isArray(data.profiles)) {
+          return toast("Ce fichier n'est pas un export complet BusinessFood Manager.");
+        }
+
+        const replaceAll = confirm("Importer TOUT :\nOK = Fusionner avec tes profils actuels\nAnnuler = arrêter\n\n(Option remplacement total : on te le proposera ensuite)");
+        if (!replaceAll) return;
+
+        const doReplace = confirm("Souhaites-tu REMPLACER totalement tes profils existants ?\n\nOK = Remplacer tout (⚠️ destructif)\nAnnuler = Fusionner (recommandé)");
+
+        if (doReplace) {
+          // supprimer anciennes clés
+          try {
+            profilesIndex.profiles.forEach(p => localStorage.removeItem(profileStoreKey(p.id)));
+          } catch {}
+          profilesIndex = { version: 1, current: "default", profiles: [] };
+        }
+
+        // importer profils
+        for (const p of data.profiles) {
+          const name = uniqueProfileName(p.name || "Profil importé");
+          const id = uid();
+          const storeKey = profileStoreKey(id);
+          const st = p.state || defaultState();
+          try { localStorage.setItem(storeKey, JSON.stringify(st)); }
+          catch { toast("Import partiel: stockage plein."); break; }
+          profilesIndex.profiles.push({ id, name, storeKey, createdAt: nowISO(), updatedAt: nowISO() });
+        }
+
+        if (!profilesIndex.profiles.length) {
+          profilesIndex.profiles = [{ id: "default", name: "Principal", storeKey: STORE_KEY, createdAt: nowISO(), updatedAt: nowISO() }];
+          profilesIndex.current = "default";
+        } else {
+          profilesIndex.current = profilesIndex.profiles[0].id;
+        }
+
+        saveProfilesIndex();
+
+        state = loadState(profileStoreKey(profilesIndex.current));
+        initDefaults();
+        refreshProfilesUI();
+        showPage("home");
+        toast("Import TOUT terminé ✅");
+      });
+    }
+
+
+
+  
+
 
   function saveConfig() {
     state.config.activite = safeText($("cfg-activite")?.value);
@@ -454,6 +863,67 @@
     on(cancel, "click", cancelEditRecipe);
   }
 
+  function ensureRecipeDeductUI() {
+    // injecte un contrôle "Déduire du stock xN" dans la page Recettes (sans toucher l'HTML)
+    const page = $("page-recettes");
+    if (!page) return;
+
+    if (!$("rec-deduct-wrap")) {
+      // On essaie de le placer juste avant le bouton d'enregistrement
+      const saveBtn = $("btn-save-recipe");
+      const wrap = document.createElement("div");
+      wrap.id = "rec-deduct-wrap";
+      wrap.className = "card";
+      wrap.style.marginTop = "12px";
+      wrap.style.padding = "12px";
+      wrap.innerHTML = `
+        <h3 style="margin-top:0;">Stock ingrédients</h3>
+        <div class="form-grid" style="grid-template-columns: 1fr 160px; gap: 10px;">
+          <div>
+            <label style="display:flex;align-items:center;gap:10px;">
+              <input type="checkbox" id="rec-deduct-stock" checked />
+              <span><strong>Déduire du stock</strong> (ingrédients)</span>
+            </label>
+            <div class="small" style="opacity:.85;margin-top:6px;">
+              Si décoché : la production est enregistrée et le stock de produits finis augmente,
+              mais <strong>les ingrédients ne sont pas décrémentés</strong>.
+            </div>
+          </div>
+          <div>
+            <label>Multiplicateur</label>
+            <select id="rec-deduct-mult">
+              ${[...Array(10)].map((_,i)=>`<option value="${i+1}">x${i+1}</option>`).join("")}
+            </select>
+            <div class="small" style="opacity:.85;margin-top:6px;">
+              x2 = 2 fournées (consommation et production multipliées).
+            </div>
+          </div>
+        </div>
+      `;
+
+      // insertion
+      if (saveBtn && saveBtn.parentElement) {
+        saveBtn.parentElement.insertAdjacentElement("beforebegin", wrap);
+      } else {
+        page.appendChild(wrap);
+      }
+
+      // live recalcul dans la liste (optionnel)
+      const multSel = $("rec-deduct-mult");
+      const chk = $("rec-deduct-stock");
+      if (multSel) multSel.addEventListener("change", renderRecipeDraftList);
+      if (chk) chk.addEventListener("change", renderRecipeDraftList);
+    }
+
+    // En mode édition, on évite de changer le multiplicateur / mode de déduction (risque compta)
+    const isEdit = !!editingRecipeId;
+    const chk = $("rec-deduct-stock");
+    const mult = $("rec-deduct-mult");
+    if (chk) chk.disabled = isEdit;
+    if (mult) mult.disabled = isEdit;
+  }
+
+
   function setRecipeFormMode(isEdit) {
     const btn = $("btn-save-recipe");
     const cancelBtn = $("btn-cancel-recipe-edit");
@@ -504,18 +974,22 @@
     if ($("rec-nom")) $("rec-nom").value = "";
     if ($("rec-nb-gaufres")) $("rec-nb-gaufres").value = "";
     if ($("rec-prix-vente")) $("rec-prix-vente").value = "";
+    if ($("rec-deduct-stock")) $("rec-deduct-stock").checked = true;
+    if ($("rec-deduct-mult")) $("rec-deduct-mult").value = "1";
     setRecipeFormMode(false);
     renderRecipeDraftList();
     toast("Modification annulée.");
   }
 
   function rollbackRecipeProduction(r) {
-    // Rendre les ingrédients consommés
-    for (const it of (r.ingredients || [])) {
+    // Rendre les ingrédients consommés (uniquement si la prod a réellement décrémenté le stock)
+    if (r.deductStock !== false) {
+      for (const it of (r.ingredients || [])) {
       const ing = state.ingredients.find(i => i.id === it.ingredientId);
       if (ing) {
         ing.baseQtyRemaining = Math.min(toNum(ing.baseQtyTotal, 0), toNum(ing.baseQtyRemaining, 0) + toNum(it.baseQty, 0));
       }
+    }
     }
     // Retirer les produits finis associés (unités + valeur au coût de cette production)
     state.inventory.finishedUnits = Math.max(0, toNum(state.inventory.finishedUnits, 0) - toNum(r.producedQty, 0));
@@ -628,6 +1102,10 @@
     const producedQty = Math.floor(toNum($("rec-nb-gaufres")?.value, 0));
     const salePrice = Math.round(toNum($("rec-prix-vente")?.value, 0));
 
+    // Option (V1): déduire le stock ingrédients + multiplicateur xN
+    const deductStock = $("rec-deduct-stock") ? !!$("rec-deduct-stock").checked : true;
+    const mult = Math.max(1, Math.min(10, Math.floor(toNum($("rec-deduct-mult")?.value, 1))));
+
     if (!name) return toast("Nom de recette manquant.");
     if (producedQty <= 0) return toast("Nombre de produits finis invalide.");
     if (!recipeDraft.length) return toast("Ajoute au moins un ingrédient.");
@@ -641,6 +1119,7 @@
       if (recipeIsUsed(r)) {
         r.name = name;
         r.salePrice = salePrice;
+      r.deductStock = (r.deductStock !== false);
         r.updatedAt = new Date().toISOString();
         saveState();
         renderRecipes();
@@ -655,26 +1134,40 @@
       // Sinon: on peut modifier complètement => rollback puis re-apply
       rollbackRecipeProduction(r);
 
-      // Vérifier stock dispo pour la nouvelle version
-      for (const it of recipeDraft) {
+      const deductStockEdit = (r.deductStock !== false);
+
+      // Vérifier stock dispo pour la nouvelle version (si cette production décrémente le stock)
+      if (deductStockEdit) {
+        for (const it of recipeDraft) {
         const ing = state.ingredients.find(i => i.id === it.ingredientId);
         if (!ing) return toast(`Ingrédient manquant : ${it.name}`);
-        if (toNum(ing.baseQtyRemaining, 0) < toNum(it.baseQty, 0) - 1e-9) {
+        const needBase = toNum(it.baseQty, 0) * mult;
+      if (toNum(ing.baseQtyRemaining, 0) < needBase - 1e-9) {
           return toast(`Stock insuffisant pour : ${ing.name} (restant ${ingredientDisplayRemaining(ing)})`);
         }
+      }
+
       }
 
       // Déduire stock + calcul coût
       let costTotal = 0;
       for (const it of recipeDraft) {
         const ing = state.ingredients.find(i => i.id === it.ingredientId);
-        const cost = pricePerBaseUnit(ing) * toNum(it.baseQty, 0);
+        const needBase = toNum(it.baseQty, 0) * mult;
+      const cost = pricePerBaseUnit(ing) * needBase;
         costTotal += cost;
-        ing.baseQtyRemaining = Math.max(0, toNum(ing.baseQtyRemaining, 0) - toNum(it.baseQty, 0));
+        if (deductStockEdit) {
+          if (deductStock) {
+        ing.baseQtyRemaining = Math.max(0, toNum(ing.baseQtyRemaining, 0) - needBase);
+      }
+      // Enregistrer les quantités consommées pour cette production (xN)
+      it.baseQty = needBase;
+      it.qtyEntered = toNum(it.qtyEntered, 0) * mult;
+        }
         it.cost = cost;
       }
 
-      const costPerUnit = costTotal / producedQty;
+      const costPerUnit = costTotal / producedTotal;
 
       // Mettre à jour la recette existante
       r.name = name;
@@ -694,7 +1187,7 @@
       r.updatedAt = new Date().toISOString();
 
       // Ajouter à l'inventaire (valeur au coût)
-      state.inventory.finishedUnits += producedQty;
+      state.inventory.finishedUnits += producedTotal;
       state.inventory.finishedValue += costTotal;
 
       // reset draft + UI
@@ -713,8 +1206,11 @@
     }
 
     // --- Création (mode normal) ---
-    // Vérifier stock dispo
-    for (const it of recipeDraft) {
+    const producedTotal = producedQty * mult;
+
+    // Vérifier stock dispo (si déduction activée)
+    if (deductStock) {
+      for (const it of recipeDraft) {
       const ing = state.ingredients.find(i => i.id === it.ingredientId);
       if (!ing) return toast(`Ingrédient manquant : ${it.name}`);
       if (toNum(ing.baseQtyRemaining, 0) < toNum(it.baseQty, 0) - 1e-9) {
@@ -722,7 +1218,9 @@
       }
     }
 
-    // Déduire stock et calculer coût total
+    }
+
+    // Déduire stock (optionnel) et calculer coût total
     let costTotal = 0;
     for (const it of recipeDraft) {
       const ing = state.ingredients.find(i => i.id === it.ingredientId);
@@ -737,8 +1235,10 @@
     const recipe = {
       id: uid(),
       name,
-      producedQty,
-      remainingQty: producedQty, // ✅ stock par production
+      producedQty: producedTotal,
+      remainingQty: producedTotal, // ✅ stock par production
+      batches: mult,
+      deductStock: deductStock,
       salePrice,
       ingredients: recipeDraft.map(x => ({
         ingredientId: x.ingredientId,
@@ -1468,504 +1968,4 @@ function saleUnitsFromPacks() {
     saveState();
     renderSalesOfDay();
     renderDashboard();
-    renderHistorique();
-    refreshSalePackSelect();
-    toast("Vente enregistrée ✅");
-  }
-
-  function renderSalesOfDay() {
-    const box = $("vente-liste-container");
-    if (!box) return;
-
-    const chosenDate = $("vente-date")?.value || dateISO();
-    const list = state.sales.filter(s => s.date === chosenDate).sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
-
-    if (!list.length) {
-      box.innerHTML = "<em>Aucune vente pour cette date.</em>";
-      return;
-    }
-
-    const wrap = el("div");
-    for (const s of list) {
-      const packLines = (s.packs || []).map(p => `• ${p.qty} × ${p.name} = ${money(p.total)}`).join("<br>");
-      const card = el("div", { class: "card", style: "margin:10px 0;" }, [
-        el("div", { style: "display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;" }, [
-          el("div", {}, [
-            el("strong", {}, [`${s.time} — ${s.vendorName}`]),
-            el("div", { class: "small", style: "opacity:.9;" }, [s.lieu ? `Lieu : ${s.lieu}` : ""]),
-            el("div", { class: "small", style: "opacity:.9;" , html: packLines ? `Packs :<br>${packLines}` : "Packs : -"}),
-            el("div", { class: "small", style: "opacity:.9;" }, [
-              `Unités hors pack : ${s.unitsSolo} × ${money(s.unitPrice)} = ${money(s.unitsSolo * s.unitPrice)}`
-            ]),
-            el("div", { class: "small", style: "opacity:.9;" }, [`Total : ${money(s.revenue)} • ${s.unitsSold} unités`])
-          ]),
-          el("button", { class: "btn btn-pink", type: "button", onclick: () => deleteSale(s.id) }, ["Supprimer"])
-        ])
-      ]);
-      wrap.appendChild(card);
-    }
-
-    box.innerHTML = "";
-    box.appendChild(wrap);
-  }
-
-  function deleteSale(id) {
-    const s = state.sales.find(x => x.id === id);
-    if (!s) return;
-
-    if (!confirm("Supprimer cette vente va remettre les produits finis en stock. Continuer ?")) return;
-
-    // remettre unités (au coût moyen au moment de la suppression: on remet COGS)
-    state.inventory.finishedUnits += Math.max(0, Math.floor(toNum(s.unitsSold, 0)));
-    state.inventory.finishedValue += Math.max(0, toNum(s.cogs, 0));
-
-    // remettre stocks par production (si la vente a été enregistrée avec des deltas)
-    if (s.recipeDeltas && typeof s.recipeDeltas === "object") {
-      for (const [rid, u] of Object.entries(s.recipeDeltas)) {
-        const r = state.recipes.find(x => x.id === rid);
-        if (!r) continue;
-        const add = Math.max(0, Math.floor(toNum(u, 0)));
-        r.remainingQty = recipeRemainingUnits(r) + add;
-      }
-    }
-
-    state.sales = state.sales.filter(x => x.id !== id);
-    saveState();
-    renderSalesOfDay();
-    renderDashboard();
-    renderHistorique();
-    refreshSalePackSelect();
-    toast("Vente supprimée.");
-  }
-
-  /* =========================
-     10) Dépenses
-  ========================== */
-  function resetExpenseForm() {
-    if ($("dep-index")) $("dep-index").value = "-1";
-    if ($("dep-cat")) $("dep-cat").value = "";
-    if ($("dep-montant")) $("dep-montant").value = "";
-    if ($("dep-note")) $("dep-note").value = "";
-    if ($("btn-add-depense")) $("btn-add-depense").textContent = "Enregistrer la dépense";
-  }
-
-  function saveExpense() {
-    const idx = toNum($("dep-index")?.value, -1);
-    const date = $("dep-date")?.value || dateISO();
-    const cat = safeText($("dep-cat")?.value);
-    const amount = Math.round(toNum($("dep-montant")?.value, 0));
-    const note = safeText($("dep-note")?.value);
-
-    if (!cat) return toast("Catégorie manquante.");
-    if (amount <= 0) return toast("Montant invalide.");
-
-    if (idx >= 0 && idx < state.expenses.length) {
-      const e = state.expenses[idx];
-      e.date = date; e.cat = cat; e.amount = amount; e.note = note;
-      e.ts = new Date(`${date}T00:00:00`).toISOString();
-      toast("Dépense modifiée ✅");
-    } else {
-      state.expenses.push({
-        id: uid(),
-        date, cat, amount, note,
-        ts: new Date(`${date}T00:00:00`).toISOString()
-      });
-      toast("Dépense enregistrée ✅");
-    }
-
-    saveState();
-    renderExpenses();
-    renderDashboard();
-    renderHistorique();
-    resetExpenseForm();
-  }
-
-  function renderExpenses() {
-    const box = $("depenses-list");
-    if (!box) return;
-
-    if (!state.expenses.length) {
-      box.innerHTML = "<em>Aucune dépense enregistrée.</em>";
-      return;
-    }
-
-    const list = [...state.expenses].sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
-    const wrap = el("div");
-
-    list.forEach((e, idx) => {
-      wrap.appendChild(
-        el("div", { class: "card", style: "margin:8px 0;padding:10px;" }, [
-          el("div", { style: "display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;" }, [
-            el("div", {}, [
-              el("strong", {}, [`${e.date} — ${e.cat}`]),
-              el("div", { class: "small", style: "opacity:.9;" }, [`Montant : ${money(e.amount)}`]),
-              el("div", { class: "small", style: "opacity:.9;" }, [e.note ? `Note : ${e.note}` : ""])
-            ]),
-            el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" }, [
-              el("button", { class: "btn btn-secondary", type: "button", onclick: () => editExpense(idx) }, ["Modifier"]),
-              el("button", { class: "btn btn-pink", type: "button", onclick: () => deleteExpense(e.id) }, ["Supprimer"])
-            ])
-          ])
-        ])
-      );
-    });
-
-    box.innerHTML = "";
-    box.appendChild(wrap);
-  }
-
-  function editExpense(index) {
-    const e = state.expenses[index];
-    if (!e) return;
-    if ($("dep-index")) $("dep-index").value = String(index);
-    if ($("dep-date")) $("dep-date").value = e.date || dateISO();
-    if ($("dep-cat")) $("dep-cat").value = e.cat || "";
-    if ($("dep-montant")) $("dep-montant").value = String(e.amount ?? "");
-    if ($("dep-note")) $("dep-note").value = e.note || "";
-    if ($("btn-add-depense")) $("btn-add-depense").textContent = "Modifier la dépense";
-  }
-
-  function deleteExpense(id) {
-    if (!confirm("Supprimer cette dépense ?")) return;
-    state.expenses = state.expenses.filter(e => e.id !== id);
-    saveState();
-    renderExpenses();
-    renderDashboard();
-    renderHistorique();
-  }
-
-  /* =========================
-     11) Dashboard
-  ========================== */
-  function renderDashboard() {
-    applyConfigLabels();
-
-    const totalUnitsSold = state.sales.reduce((s, x) => s + Math.max(0, Math.floor(toNum(x.unitsSold, 0))), 0);
-    const revenueTotal = state.sales.reduce((s, x) => s + toNum(x.revenue, 0), 0);
-    const expensesTotal = state.expenses.reduce((s, x) => s + toNum(x.amount, 0), 0);
-    const cogsTotal = state.sales.reduce((s, x) => s + toNum(x.cogs, 0), 0);
-
-    const net = revenueTotal - expensesTotal - cogsTotal;
-
-    if ($("dash-total-gaufres")) $("dash-total-gaufres").textContent = String(totalUnitsSold);
-    if ($("dash-revenu-total")) $("dash-revenu-total").textContent = money(revenueTotal);
-    if ($("dash-depenses")) $("dash-depenses").textContent = money(expensesTotal);
-    if ($("dash-benefice-net")) $("dash-benefice-net").textContent = money(net);
-
-    const pP = state.config.produitP || "produits";
-    if ($("dash-stock-restant")) $("dash-stock-restant").textContent = `${Math.floor(toNum(state.inventory.finishedUnits, 0))} ${pP}`;
-
-    // capacité: max sur toutes les recettes (combien on peut produire avec stocks)
-    let bestCap = 0;
-    let bestRecipe = null;
-    for (const r of state.recipes) {
-      const cap = computeRecipeCapacity(r);
-      if (cap > bestCap) { bestCap = cap; bestRecipe = r; }
-    }
-    if ($("dash-capacite")) $("dash-capacite").textContent = `${bestCap} ${pP}`;
-
-    // meilleur vendeur
-    const byVendor = new Map();
-    for (const s of state.sales) {
-      const k = s.vendorName || "-";
-      byVendor.set(k, (byVendor.get(k) || 0) + toNum(s.revenue, 0));
-    }
-    const bestVendor = [...byVendor.entries()].sort((a, b) => b[1] - a[1])[0];
-    if ($("dash-best-vendeur")) $("dash-best-vendeur").textContent = bestVendor ? `${bestVendor[0]} (${money(bestVendor[1])})` : "-";
-
-    // pack le plus vendu
-    const byPack = new Map();
-    for (const s of state.sales) {
-      for (const p of (s.packs || [])) {
-        const k = p.name || "-";
-        byPack.set(k, (byPack.get(k) || 0) + Math.max(0, Math.floor(toNum(p.qty, 0))));
-      }
-    }
-    const bestPack = [...byPack.entries()].sort((a, b) => b[1] - a[1])[0];
-    if ($("dash-best-pack")) $("dash-best-pack").textContent = bestPack ? `${bestPack[0]} (${bestPack[1]})` : "-";
-
-    // stats avancées
-    const avgCost = inventoryAvgCost();
-    const invValue = toNum(state.inventory.finishedValue, 0);
-
-    if ($("dash-stats-ventes")) $("dash-stats-ventes").textContent =
-      `Analyse ventes : ${state.sales.length} vente(s), panier moyen ${money(state.sales.length ? (revenueTotal / state.sales.length) : 0)}, coût moyen/unité ${roundSmart(avgCost)} FCFA`;
-
-    // ingrédient le plus "cher" en valeur de stock
-    const topIng = [...state.ingredients]
-      .map(i => ({ name: i.name, value: ingredientStockValue(i) }))
-      .sort((a, b) => b.value - a.value)[0];
-
-    if ($("dash-stats-ingredients")) $("dash-stats-ingredients").textContent =
-      `Analyse ingrédients : valeur stock produits finis ${money(invValue)}${bestRecipe ? ` • meilleure capacité via "${bestRecipe.name}"` : ""}${topIng ? ` • ingrédient le + valorisé: ${topIng.name} (${money(topIng.value)})` : ""}`;
-  }
-
-  function resetFinishedStock() {
-    if (!confirm("Réinitialiser le stock de produits finis (unités + valeur) ?")) return;
-    state.inventory.finishedUnits = 0;
-    state.inventory.finishedValue = 0;
-    saveState();
-    renderDashboard();
-    toast("Stock produits finis réinitialisé.");
-  }
-
-  /* =========================
-     12) Historique + exports
-  ========================== */
-  function renderHistorique() {
-    const box = $("historique-list");
-    if (!box) return;
-
-    const sales = [...state.sales].sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
-    const expenses = [...state.expenses].sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
-
-    if (!sales.length && !expenses.length) {
-      box.innerHTML = "<em>Aucune donnée d'historique.</em>";
-      return;
-    }
-
-    const wrap = el("div");
-
-    // ventes
-    wrap.appendChild(el("h2", {}, ["Ventes"]));
-    if (!sales.length) wrap.appendChild(el("div", { class: "card", style: "margin:8px 0;padding:10px;" }, ["Aucune vente."]));
-    for (const s of sales) {
-      const packsHTML = (s.packs || []).map(p => `• ${p.qty} × ${escapeHTML(p.name)} = ${money(p.total)}`).join("<br>");
-      wrap.appendChild(
-        el("div", { class: "card", style: "margin:10px 0;" }, [
-          el("strong", {}, [`${s.date} ${s.time} — ${s.vendorName}`]),
-          el("div", { class: "small", style: "opacity:.9;" }, [s.lieu ? `Lieu : ${s.lieu}` : ""]),
-          el("div", { class: "small", style: "opacity:.9;" , html: packsHTML ? `Packs :<br>${packsHTML}` : "Packs : -"}),
-          el("div", { class: "small", style: "opacity:.9;" }, [
-            `Unités hors pack : ${s.unitsSolo} × ${money(s.unitPrice)}`
-          ]),
-          el("div", { class: "small", style: "opacity:.9;" }, [
-            `Total : ${money(s.revenue)} • Unités : ${s.unitsSold} • COGS : ${money(s.cogs)}`
-          ])
-        ])
-      );
-    }
-
-    // dépenses
-    wrap.appendChild(el("h2", { style: "margin-top:18px;" }, ["Dépenses"]));
-    if (!expenses.length) wrap.appendChild(el("div", { class: "card", style: "margin:8px 0;padding:10px;" }, ["Aucune dépense."]));
-    for (const e of expenses) {
-      wrap.appendChild(
-        el("div", { class: "card", style: "margin:10px 0;" }, [
-          el("strong", {}, [`${e.date} — ${e.cat}`]),
-          el("div", { class: "small", style: "opacity:.9;" }, [`Montant : ${money(e.amount)}`]),
-          el("div", { class: "small", style: "opacity:.9;" }, [e.note ? `Note : ${e.note}` : ""])
-        ])
-      );
-    }
-
-    box.innerHTML = "";
-    box.appendChild(wrap);
-  }
-
-  async function exportPDF() {
-    const node = $("page-historique");
-    if (!node) return toast("Section historique introuvable.");
-
-    // jsPDF / html2canvas sont chargés dans le HTML. Si pas dispo: fallback print.
-    const hasCanvas = typeof window.html2canvas === "function";
-    const hasPDF = window.jspdf && window.jspdf.jsPDF;
-
-    if (!hasCanvas || !hasPDF) {
-      toast("Librairies PDF non disponibles. Fallback impression.");
-      window.print();
-      return;
-    }
-
-    toast("Génération PDF…");
-
-    const canvas = await window.html2canvas(node, { scale: 2, useCORS: true });
-    const imgData = canvas.toDataURL("image/png");
-
-    const pdf = new window.jspdf.jsPDF("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-
-    // ratio image
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    let heightLeft = imgHeight;
-    let position = 0;
-
-    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-    }
-
-    pdf.save(`businessfood-historique-${dateISO()}.pdf`);
-  }
-  window.exportPDF = exportPDF;
-
-  function exportCSV() {
-    const lines = [];
-    lines.push(["type", "date", "heure", "vendeur", "lieu", "unites_hors_pack", "prix_unite", "packs", "revenu", "cogs", "depense_cat", "depense_montant", "depense_note"].join(";"));
-
-    // ventes
-    for (const s of state.sales) {
-      const packs = (s.packs || []).map(p => `${p.qty}x ${p.name} (${p.pricePerPack})`).join(" | ");
-      lines.push([
-        "vente",
-        s.date || "",
-        s.time || "",
-        (s.vendorName || "").replaceAll(";", ","),
-        (s.lieu || "").replaceAll(";", ","),
-        String(s.unitsSolo ?? 0),
-        String(s.unitPrice ?? 0),
-        packs.replaceAll(";", ","),
-        String(Math.round(toNum(s.revenue, 0))),
-        String(Math.round(toNum(s.cogs, 0))),
-        "", "", ""
-      ].join(";"));
-    }
-
-    // dépenses
-    for (const e of state.expenses) {
-      lines.push([
-        "depense",
-        e.date || "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        (e.cat || "").replaceAll(";", ","),
-        String(Math.round(toNum(e.amount, 0))),
-        (e.note || "").replaceAll(";", ",")
-      ].join(";"));
-    }
-
-    downloadText(`businessfood-export-${dateISO()}.csv`, lines.join("\n"), "text/csv;charset=utf-8");
-  }
-  window.exportCSV = exportCSV;
-
-  function whatsappShare(text) {
-    const msg = encodeURIComponent(text);
-    const url = `https://wa.me/?text=${msg}`;
-    window.open(url, "_blank");
-  }
-
-  function shareWhatsapp() {
-    const d = dateISO();
-    const salesToday = state.sales.filter(s => s.date === d);
-    const rev = salesToday.reduce((s, x) => s + toNum(x.revenue, 0), 0);
-    const units = salesToday.reduce((s, x) => s + Math.floor(toNum(x.unitsSold, 0)), 0);
-
-    const pP = state.config.produitP || "produits";
-    const msg =
-      `BusinessFood Manager — Résumé du ${d}\n` +
-      `Ventes: ${salesToday.length}\n` +
-      `Unités vendues: ${units} ${pP}\n` +
-      `Chiffre d'affaires: ${money(rev)}\n` +
-      `Stock restant: ${Math.floor(toNum(state.inventory.finishedUnits, 0))} ${pP}\n`;
-
-    whatsappShare(msg);
-  }
-  window.shareWhatsapp = shareWhatsapp;
-
-  function shareDashboard() {
-    const revenueTotal = state.sales.reduce((s, x) => s + toNum(x.revenue, 0), 0);
-    const expensesTotal = state.expenses.reduce((s, x) => s + toNum(x.amount, 0), 0);
-    const cogsTotal = state.sales.reduce((s, x) => s + toNum(x.cogs, 0), 0);
-    const net = revenueTotal - expensesTotal - cogsTotal;
-
-    const msg =
-      `BusinessFood Manager — Dashboard\n` +
-      `Revenu total: ${money(revenueTotal)}\n` +
-      `Dépenses: ${money(expensesTotal)}\n` +
-      `Coût marchandises (COGS): ${money(cogsTotal)}\n` +
-      `Bénéfice net: ${money(net)}\n` +
-      `Stock produits finis: ${Math.floor(toNum(state.inventory.finishedUnits, 0))}\n`;
-
-    whatsappShare(msg);
-  }
-  window.shareDashboard = shareDashboard;
-
-  /* =========================
-     13) Init + wiring
-  ========================== */
-  function initDefaults() {
-    // dates/heure par défaut
-    if ($("vente-date") && !$("vente-date").value) $("vente-date").value = dateISO();
-    if ($("vente-heure") && !$("vente-heure").value) $("vente-heure").value = timeISO();
-    if ($("dep-date") && !$("dep-date").value) $("dep-date").value = dateISO();
-
-    // draft init
-    refreshPackRecipeOptions();
-    renderPackDraft();
-    renderRecipeDraftList();
-    renderSaleDraftPacks();
-
-    // labels
-    applyConfigLabels();
-    ensureRecipeCancelButton();
-    setRecipeFormMode(false);
-  }
-
-  function wireEvents() {
-    on($("btn-open-config-home"), "click", () => showPage("config"));
-    on($("btn-save-config"), "click", saveConfig);
-
-    on($("btn-add-ingredient"), "click", addIngredient);
-
-    on($("rec-add-ingredient-btn"), "click", addIngredientToRecipeDraft);
-    on($("btn-save-recipe"), "click", saveRecipeProduction);
-
-    on($("btn-pack-add-row"), "click", addPackRow);
-    on($("btn-add-pack"), "click", addPack);
-
-    // Pack: suggestion prix en live (marge -> placeholder)
-    on($("pack-margin"), "input", renderPackDraft);
-    on($("pack-margin"), "change", renderPackDraft);
-
-
-    on($("vente-pack-add-btn"), "click", addPackToSaleDraft);
-    on($("btn-enregistrer-vente"), "click", saveSale);
-    on($("vente-date"), "change", renderSalesOfDay);
-
-    on($("btn-add-depense"), "click", saveExpense);
-    on($("btn-cancel-depense-edit"), "click", resetExpenseForm);
-
-    on($("btn-reset-stock"), "click", resetFinishedStock);
-
-    // vendeurs list refresh
-    renderVendors();
-  }
-
-  function boot() {
-    initDefaults();
-    wireEvents();
-
-    // initial renders
-    renderIngredients();
-    refreshRecipeIngredientSelect();
-    refreshPackRecipeOptions();
-    renderPackDraft();
-    renderPacks();
-    refreshSalePackSelect();
-    refreshVendorsSelect();
-    renderSalesOfDay();
-    renderExpenses();
-    renderDashboard();
-    renderHistorique();
-
-    // Page d'accueil par défaut
-    showPage("home");
-  }
-
-  document.addEventListener("DOMContentLoaded", boot);
-
-})();
+    r
