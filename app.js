@@ -1968,4 +1968,504 @@ function saleUnitsFromPacks() {
     saveState();
     renderSalesOfDay();
     renderDashboard();
-    r
+    renderHistorique();
+    refreshSalePackSelect();
+    toast("Vente enregistrée ✅");
+  }
+
+  function renderSalesOfDay() {
+    const box = $("vente-liste-container");
+    if (!box) return;
+
+    const chosenDate = $("vente-date")?.value || dateISO();
+    const list = state.sales.filter(s => s.date === chosenDate).sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+
+    if (!list.length) {
+      box.innerHTML = "<em>Aucune vente pour cette date.</em>";
+      return;
+    }
+
+    const wrap = el("div");
+    for (const s of list) {
+      const packLines = (s.packs || []).map(p => `• ${p.qty} × ${p.name} = ${money(p.total)}`).join("<br>");
+      const card = el("div", { class: "card", style: "margin:10px 0;" }, [
+        el("div", { style: "display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;" }, [
+          el("div", {}, [
+            el("strong", {}, [`${s.time} — ${s.vendorName}`]),
+            el("div", { class: "small", style: "opacity:.9;" }, [s.lieu ? `Lieu : ${s.lieu}` : ""]),
+            el("div", { class: "small", style: "opacity:.9;" , html: packLines ? `Packs :<br>${packLines}` : "Packs : -"}),
+            el("div", { class: "small", style: "opacity:.9;" }, [
+              `Unités hors pack : ${s.unitsSolo} × ${money(s.unitPrice)} = ${money(s.unitsSolo * s.unitPrice)}`
+            ]),
+            el("div", { class: "small", style: "opacity:.9;" }, [`Total : ${money(s.revenue)} • ${s.unitsSold} unités`])
+          ]),
+          el("button", { class: "btn btn-pink", type: "button", onclick: () => deleteSale(s.id) }, ["Supprimer"])
+        ])
+      ]);
+      wrap.appendChild(card);
+    }
+
+    box.innerHTML = "";
+    box.appendChild(wrap);
+  }
+
+  function deleteSale(id) {
+    const s = state.sales.find(x => x.id === id);
+    if (!s) return;
+
+    if (!confirm("Supprimer cette vente va remettre les produits finis en stock. Continuer ?")) return;
+
+    // remettre unités (au coût moyen au moment de la suppression: on remet COGS)
+    state.inventory.finishedUnits += Math.max(0, Math.floor(toNum(s.unitsSold, 0)));
+    state.inventory.finishedValue += Math.max(0, toNum(s.cogs, 0));
+
+    // remettre stocks par production (si la vente a été enregistrée avec des deltas)
+    if (s.recipeDeltas && typeof s.recipeDeltas === "object") {
+      for (const [rid, u] of Object.entries(s.recipeDeltas)) {
+        const r = state.recipes.find(x => x.id === rid);
+        if (!r) continue;
+        const add = Math.max(0, Math.floor(toNum(u, 0)));
+        r.remainingQty = recipeRemainingUnits(r) + add;
+      }
+    }
+
+    state.sales = state.sales.filter(x => x.id !== id);
+    saveState();
+    renderSalesOfDay();
+    renderDashboard();
+    renderHistorique();
+    refreshSalePackSelect();
+    toast("Vente supprimée.");
+  }
+
+  /* =========================
+     10) Dépenses
+  ========================== */
+  function resetExpenseForm() {
+    if ($("dep-index")) $("dep-index").value = "-1";
+    if ($("dep-cat")) $("dep-cat").value = "";
+    if ($("dep-montant")) $("dep-montant").value = "";
+    if ($("dep-note")) $("dep-note").value = "";
+    if ($("btn-add-depense")) $("btn-add-depense").textContent = "Enregistrer la dépense";
+  }
+
+  function saveExpense() {
+    const idx = toNum($("dep-index")?.value, -1);
+    const date = $("dep-date")?.value || dateISO();
+    const cat = safeText($("dep-cat")?.value);
+    const amount = Math.round(toNum($("dep-montant")?.value, 0));
+    const note = safeText($("dep-note")?.value);
+
+    if (!cat) return toast("Catégorie manquante.");
+    if (amount <= 0) return toast("Montant invalide.");
+
+    if (idx >= 0 && idx < state.expenses.length) {
+      const e = state.expenses[idx];
+      e.date = date; e.cat = cat; e.amount = amount; e.note = note;
+      e.ts = new Date(`${date}T00:00:00`).toISOString();
+      toast("Dépense modifiée ✅");
+    } else {
+      state.expenses.push({
+        id: uid(),
+        date, cat, amount, note,
+        ts: new Date(`${date}T00:00:00`).toISOString()
+      });
+      toast("Dépense enregistrée ✅");
+    }
+
+    saveState();
+    renderExpenses();
+    renderDashboard();
+    renderHistorique();
+    resetExpenseForm();
+  }
+
+  function renderExpenses() {
+    const box = $("depenses-list");
+    if (!box) return;
+
+    if (!state.expenses.length) {
+      box.innerHTML = "<em>Aucune dépense enregistrée.</em>";
+      return;
+    }
+
+    const list = [...state.expenses].sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+    const wrap = el("div");
+
+    list.forEach((e, idx) => {
+      wrap.appendChild(
+        el("div", { class: "card", style: "margin:8px 0;padding:10px;" }, [
+          el("div", { style: "display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;" }, [
+            el("div", {}, [
+              el("strong", {}, [`${e.date} — ${e.cat}`]),
+              el("div", { class: "small", style: "opacity:.9;" }, [`Montant : ${money(e.amount)}`]),
+              el("div", { class: "small", style: "opacity:.9;" }, [e.note ? `Note : ${e.note}` : ""])
+            ]),
+            el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" }, [
+              el("button", { class: "btn btn-secondary", type: "button", onclick: () => editExpense(idx) }, ["Modifier"]),
+              el("button", { class: "btn btn-pink", type: "button", onclick: () => deleteExpense(e.id) }, ["Supprimer"])
+            ])
+          ])
+        ])
+      );
+    });
+
+    box.innerHTML = "";
+    box.appendChild(wrap);
+  }
+
+  function editExpense(index) {
+    const e = state.expenses[index];
+    if (!e) return;
+    if ($("dep-index")) $("dep-index").value = String(index);
+    if ($("dep-date")) $("dep-date").value = e.date || dateISO();
+    if ($("dep-cat")) $("dep-cat").value = e.cat || "";
+    if ($("dep-montant")) $("dep-montant").value = String(e.amount ?? "");
+    if ($("dep-note")) $("dep-note").value = e.note || "";
+    if ($("btn-add-depense")) $("btn-add-depense").textContent = "Modifier la dépense";
+  }
+
+  function deleteExpense(id) {
+    if (!confirm("Supprimer cette dépense ?")) return;
+    state.expenses = state.expenses.filter(e => e.id !== id);
+    saveState();
+    renderExpenses();
+    renderDashboard();
+    renderHistorique();
+  }
+
+  /* =========================
+     11) Dashboard
+  ========================== */
+  function renderDashboard() {
+    applyConfigLabels();
+
+    const totalUnitsSold = state.sales.reduce((s, x) => s + Math.max(0, Math.floor(toNum(x.unitsSold, 0))), 0);
+    const revenueTotal = state.sales.reduce((s, x) => s + toNum(x.revenue, 0), 0);
+    const expensesTotal = state.expenses.reduce((s, x) => s + toNum(x.amount, 0), 0);
+    const cogsTotal = state.sales.reduce((s, x) => s + toNum(x.cogs, 0), 0);
+
+    const net = revenueTotal - expensesTotal - cogsTotal;
+
+    if ($("dash-total-gaufres")) $("dash-total-gaufres").textContent = String(totalUnitsSold);
+    if ($("dash-revenu-total")) $("dash-revenu-total").textContent = money(revenueTotal);
+    if ($("dash-depenses")) $("dash-depenses").textContent = money(expensesTotal);
+    if ($("dash-benefice-net")) $("dash-benefice-net").textContent = money(net);
+
+    const pP = state.config.produitP || "produits";
+    if ($("dash-stock-restant")) $("dash-stock-restant").textContent = `${Math.floor(toNum(state.inventory.finishedUnits, 0))} ${pP}`;
+
+    // capacité: max sur toutes les recettes (combien on peut produire avec stocks)
+    let bestCap = 0;
+    let bestRecipe = null;
+    for (const r of state.recipes) {
+      const cap = computeRecipeCapacity(r);
+      if (cap > bestCap) { bestCap = cap; bestRecipe = r; }
+    }
+    if ($("dash-capacite")) $("dash-capacite").textContent = `${bestCap} ${pP}`;
+
+    // meilleur vendeur
+    const byVendor = new Map();
+    for (const s of state.sales) {
+      const k = s.vendorName || "-";
+      byVendor.set(k, (byVendor.get(k) || 0) + toNum(s.revenue, 0));
+    }
+    const bestVendor = [...byVendor.entries()].sort((a, b) => b[1] - a[1])[0];
+    if ($("dash-best-vendeur")) $("dash-best-vendeur").textContent = bestVendor ? `${bestVendor[0]} (${money(bestVendor[1])})` : "-";
+
+    // pack le plus vendu
+    const byPack = new Map();
+    for (const s of state.sales) {
+      for (const p of (s.packs || [])) {
+        const k = p.name || "-";
+        byPack.set(k, (byPack.get(k) || 0) + Math.max(0, Math.floor(toNum(p.qty, 0))));
+      }
+    }
+    const bestPack = [...byPack.entries()].sort((a, b) => b[1] - a[1])[0];
+    if ($("dash-best-pack")) $("dash-best-pack").textContent = bestPack ? `${bestPack[0]} (${bestPack[1]})` : "-";
+
+    // stats avancées
+    const avgCost = inventoryAvgCost();
+    const invValue = toNum(state.inventory.finishedValue, 0);
+
+    if ($("dash-stats-ventes")) $("dash-stats-ventes").textContent =
+      `Analyse ventes : ${state.sales.length} vente(s), panier moyen ${money(state.sales.length ? (revenueTotal / state.sales.length) : 0)}, coût moyen/unité ${roundSmart(avgCost)} FCFA`;
+
+    // ingrédient le plus "cher" en valeur de stock
+    const topIng = [...state.ingredients]
+      .map(i => ({ name: i.name, value: ingredientStockValue(i) }))
+      .sort((a, b) => b.value - a.value)[0];
+
+    if ($("dash-stats-ingredients")) $("dash-stats-ingredients").textContent =
+      `Analyse ingrédients : valeur stock produits finis ${money(invValue)}${bestRecipe ? ` • meilleure capacité via "${bestRecipe.name}"` : ""}${topIng ? ` • ingrédient le + valorisé: ${topIng.name} (${money(topIng.value)})` : ""}`;
+  }
+
+  function resetFinishedStock() {
+    if (!confirm("Réinitialiser le stock de produits finis (unités + valeur) ?")) return;
+    state.inventory.finishedUnits = 0;
+    state.inventory.finishedValue = 0;
+    saveState();
+    renderDashboard();
+    toast("Stock produits finis réinitialisé.");
+  }
+
+  /* =========================
+     12) Historique + exports
+  ========================== */
+  function renderHistorique() {
+    const box = $("historique-list");
+    if (!box) return;
+
+    const sales = [...state.sales].sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+    const expenses = [...state.expenses].sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+
+    if (!sales.length && !expenses.length) {
+      box.innerHTML = "<em>Aucune donnée d'historique.</em>";
+      return;
+    }
+
+    const wrap = el("div");
+
+    // ventes
+    wrap.appendChild(el("h2", {}, ["Ventes"]));
+    if (!sales.length) wrap.appendChild(el("div", { class: "card", style: "margin:8px 0;padding:10px;" }, ["Aucune vente."]));
+    for (const s of sales) {
+      const packsHTML = (s.packs || []).map(p => `• ${p.qty} × ${escapeHTML(p.name)} = ${money(p.total)}`).join("<br>");
+      wrap.appendChild(
+        el("div", { class: "card", style: "margin:10px 0;" }, [
+          el("strong", {}, [`${s.date} ${s.time} — ${s.vendorName}`]),
+          el("div", { class: "small", style: "opacity:.9;" }, [s.lieu ? `Lieu : ${s.lieu}` : ""]),
+          el("div", { class: "small", style: "opacity:.9;" , html: packsHTML ? `Packs :<br>${packsHTML}` : "Packs : -"}),
+          el("div", { class: "small", style: "opacity:.9;" }, [
+            `Unités hors pack : ${s.unitsSolo} × ${money(s.unitPrice)}`
+          ]),
+          el("div", { class: "small", style: "opacity:.9;" }, [
+            `Total : ${money(s.revenue)} • Unités : ${s.unitsSold} • COGS : ${money(s.cogs)}`
+          ])
+        ])
+      );
+    }
+
+    // dépenses
+    wrap.appendChild(el("h2", { style: "margin-top:18px;" }, ["Dépenses"]));
+    if (!expenses.length) wrap.appendChild(el("div", { class: "card", style: "margin:8px 0;padding:10px;" }, ["Aucune dépense."]));
+    for (const e of expenses) {
+      wrap.appendChild(
+        el("div", { class: "card", style: "margin:10px 0;" }, [
+          el("strong", {}, [`${e.date} — ${e.cat}`]),
+          el("div", { class: "small", style: "opacity:.9;" }, [`Montant : ${money(e.amount)}`]),
+          el("div", { class: "small", style: "opacity:.9;" }, [e.note ? `Note : ${e.note}` : ""])
+        ])
+      );
+    }
+
+    box.innerHTML = "";
+    box.appendChild(wrap);
+  }
+
+  async function exportPDF() {
+    const node = $("page-historique");
+    if (!node) return toast("Section historique introuvable.");
+
+    // jsPDF / html2canvas sont chargés dans le HTML. Si pas dispo: fallback print.
+    const hasCanvas = typeof window.html2canvas === "function";
+    const hasPDF = window.jspdf && window.jspdf.jsPDF;
+
+    if (!hasCanvas || !hasPDF) {
+      toast("Librairies PDF non disponibles. Fallback impression.");
+      window.print();
+      return;
+    }
+
+    toast("Génération PDF…");
+
+    const canvas = await window.html2canvas(node, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL("image/png");
+
+    const pdf = new window.jspdf.jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    // ratio image
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    pdf.save(`businessfood-historique-${dateISO()}.pdf`);
+  }
+  window.exportPDF = exportPDF;
+
+  function exportCSV() {
+    const lines = [];
+    lines.push(["type", "date", "heure", "vendeur", "lieu", "unites_hors_pack", "prix_unite", "packs", "revenu", "cogs", "depense_cat", "depense_montant", "depense_note"].join(";"));
+
+    // ventes
+    for (const s of state.sales) {
+      const packs = (s.packs || []).map(p => `${p.qty}x ${p.name} (${p.pricePerPack})`).join(" | ");
+      lines.push([
+        "vente",
+        s.date || "",
+        s.time || "",
+        (s.vendorName || "").replaceAll(";", ","),
+        (s.lieu || "").replaceAll(";", ","),
+        String(s.unitsSolo ?? 0),
+        String(s.unitPrice ?? 0),
+        packs.replaceAll(";", ","),
+        String(Math.round(toNum(s.revenue, 0))),
+        String(Math.round(toNum(s.cogs, 0))),
+        "", "", ""
+      ].join(";"));
+    }
+
+    // dépenses
+    for (const e of state.expenses) {
+      lines.push([
+        "depense",
+        e.date || "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        (e.cat || "").replaceAll(";", ","),
+        String(Math.round(toNum(e.amount, 0))),
+        (e.note || "").replaceAll(";", ",")
+      ].join(";"));
+    }
+
+    downloadText(`businessfood-export-${dateISO()}.csv`, lines.join("\n"), "text/csv;charset=utf-8");
+  }
+  window.exportCSV = exportCSV;
+
+  function whatsappShare(text) {
+    const msg = encodeURIComponent(text);
+    const url = `https://wa.me/?text=${msg}`;
+    window.open(url, "_blank");
+  }
+
+  function shareWhatsapp() {
+    const d = dateISO();
+    const salesToday = state.sales.filter(s => s.date === d);
+    const rev = salesToday.reduce((s, x) => s + toNum(x.revenue, 0), 0);
+    const units = salesToday.reduce((s, x) => s + Math.floor(toNum(x.unitsSold, 0)), 0);
+
+    const pP = state.config.produitP || "produits";
+    const msg =
+      `BusinessFood Manager — Résumé du ${d}\n` +
+      `Ventes: ${salesToday.length}\n` +
+      `Unités vendues: ${units} ${pP}\n` +
+      `Chiffre d'affaires: ${money(rev)}\n` +
+      `Stock restant: ${Math.floor(toNum(state.inventory.finishedUnits, 0))} ${pP}\n`;
+
+    whatsappShare(msg);
+  }
+  window.shareWhatsapp = shareWhatsapp;
+
+  function shareDashboard() {
+    const revenueTotal = state.sales.reduce((s, x) => s + toNum(x.revenue, 0), 0);
+    const expensesTotal = state.expenses.reduce((s, x) => s + toNum(x.amount, 0), 0);
+    const cogsTotal = state.sales.reduce((s, x) => s + toNum(x.cogs, 0), 0);
+    const net = revenueTotal - expensesTotal - cogsTotal;
+
+    const msg =
+      `BusinessFood Manager — Dashboard\n` +
+      `Revenu total: ${money(revenueTotal)}\n` +
+      `Dépenses: ${money(expensesTotal)}\n` +
+      `Coût marchandises (COGS): ${money(cogsTotal)}\n` +
+      `Bénéfice net: ${money(net)}\n` +
+      `Stock produits finis: ${Math.floor(toNum(state.inventory.finishedUnits, 0))}\n`;
+
+    whatsappShare(msg);
+  }
+  window.shareDashboard = shareDashboard;
+
+  /* =========================
+     13) Init + wiring
+  ========================== */
+  function initDefaults() {
+    // dates/heure par défaut
+    if ($("vente-date") && !$("vente-date").value) $("vente-date").value = dateISO();
+    if ($("vente-heure") && !$("vente-heure").value) $("vente-heure").value = timeISO();
+    if ($("dep-date") && !$("dep-date").value) $("dep-date").value = dateISO();
+
+    // draft init
+    refreshPackRecipeOptions();
+    renderPackDraft();
+    renderRecipeDraftList();
+    renderSaleDraftPacks();
+
+    // labels
+    applyConfigLabels();
+    ensureRecipeCancelButton();
+    setRecipeFormMode(false);
+  }
+
+  function wireEvents() {
+    on($("btn-open-config-home"), "click", () => showPage("config"));
+    on($("btn-save-config"), "click", saveConfig);
+
+    on($("btn-add-ingredient"), "click", addIngredient);
+
+    on($("rec-add-ingredient-btn"), "click", addIngredientToRecipeDraft);
+    on($("btn-save-recipe"), "click", saveRecipeProduction);
+
+    on($("btn-pack-add-row"), "click", addPackRow);
+    on($("btn-add-pack"), "click", addPack);
+
+    // Pack: suggestion prix en live (marge -> placeholder)
+    on($("pack-margin"), "input", renderPackDraft);
+    on($("pack-margin"), "change", renderPackDraft);
+
+
+    on($("vente-pack-add-btn"), "click", addPackToSaleDraft);
+    on($("btn-enregistrer-vente"), "click", saveSale);
+    on($("vente-date"), "change", renderSalesOfDay);
+
+    on($("btn-add-depense"), "click", saveExpense);
+    on($("btn-cancel-depense-edit"), "click", resetExpenseForm);
+
+    on($("btn-reset-stock"), "click", resetFinishedStock);
+
+    // vendeurs list refresh
+    renderVendors();
+  }
+
+  function boot() {
+    initDefaults();
+    wireEvents();
+
+    // initial renders
+    renderIngredients();
+    refreshRecipeIngredientSelect();
+    refreshPackRecipeOptions();
+    renderPackDraft();
+    renderPacks();
+    refreshSalePackSelect();
+    refreshVendorsSelect();
+    renderSalesOfDay();
+    renderExpenses();
+    renderDashboard();
+    renderHistorique();
+
+    // Page d'accueil par défaut
+    showPage("home");
+  }
+
+  document.addEventListener("DOMContentLoaded", boot);
+
+})();
