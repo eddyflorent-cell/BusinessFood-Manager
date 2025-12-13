@@ -12,7 +12,7 @@
   ========================== */
   const $ = (id) => document.getElementById(id);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-  const on = (el, evt, fn, opts) => { if (el) el.addEventListener(evt, fn, opts); };
+  const on = (el, evt, fn, opts) => { if (!el) return; const id = el.id || ""; const needsWrite = (evt === "click") && ["btn-add-ingredient","btn-save-recipe","btn-add-pack","btn-save-sale","btn-add-expense","btn-add-vendeur"].includes(id); const wrapped = (e) => { if (needsWrite && !requireWriteAccess()) return; return fn(e); }; el.addEventListener(evt, wrapped, opts); };
 
   const uid = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
   const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
@@ -323,7 +323,139 @@
 
   let state = loadState();
 
-  // Normalisation (compat anciens états)
+  
+
+  /* =========================
+     Device ID + Licence (abonnement) — offline-first
+     - 1 appareil = 1 licence
+     - Grâce après expiration : 14 jours
+     - Mode TEST : uniquement sur appareils autorisés (whitelist)
+  ========================== */
+  const LICENSE_GRACE_DAYS = 14;
+
+  // ⚠️ Liste blanche des appareils autorisés pour le MODE TEST (à toi de gérer)
+  const DEV_TEST_DEVICE_IDS = new Set([
+    "8e4718f6-a4b0-4348-99a0-01da86b7915a",
+    "6e532737-6930-46f0-ad7c-02e516e528a3"
+  ]);
+
+  const LS_DEVICE_ID_KEY = "bfm_device_id_v1";
+  const LS_LICENSE_KEY = "bfm_license_v1";
+
+  function genUUIDv4() {
+    // crypto.randomUUID() si dispo, sinon fallback
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    const buf = new Uint8Array(16);
+    (window.crypto || { getRandomValues: (a) => a.map(() => Math.floor(Math.random()*256)) }).getRandomValues(buf);
+    buf[6] = (buf[6] & 0x0f) | 0x40;
+    buf[8] = (buf[8] & 0x3f) | 0x80;
+    const hex = [...buf].map(b => b.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+  }
+
+  function getDeviceId() {
+    let id = localStorage.getItem(LS_DEVICE_ID_KEY);
+    if (!id) {
+      id = genUUIDv4();
+      localStorage.setItem(LS_DEVICE_ID_KEY, id);
+    }
+    return id;
+  }
+
+  function loadLicense() {
+    try {
+      const raw = localStorage.getItem(LS_LICENSE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  function saveLicense(lic) {
+    try { localStorage.setItem(LS_LICENSE_KEY, JSON.stringify(lic || {})); } catch {}
+  }
+
+  function nowISO() { return new Date().toISOString(); }
+  function parseDate(d) { const x = new Date(d); return isNaN(+x) ? null : x; }
+  function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + days); return d; }
+
+  function ensureLicense() {
+    const deviceId = getDeviceId();
+    let lic = loadLicense();
+
+    // MODE TEST auto sur device whitelist
+    if (DEV_TEST_DEVICE_IDS.has(deviceId)) {
+      if (!lic || lic.status !== "TEST") {
+        lic = { status: "TEST", note: "Device whitelisted", createdAt: nowISO() };
+        saveLicense(lic);
+      }
+      return lic;
+    }
+
+    if (!lic || !lic.status) {
+      // Par défaut : "ACTIVE" mais payé jusqu'à aujourd'hui => 14 jours de grâce pour régulariser.
+      lic = { status: "ACTIVE", paidUntil: nowISO(), createdAt: nowISO(), plan: "STANDARD" };
+      saveLicense(lic);
+    }
+    return lic;
+  }
+
+  function licenseStatusLabel(lic) {
+    if (!lic) return "Inconnu";
+    if (lic.status === "TEST") return "🧪 TEST (illimité)";
+    if (lic.status === "ACTIVE") {
+      const paidUntil = parseDate(lic.paidUntil);
+      if (!paidUntil) return "✅ Actif";
+      const graceEnd = addDays(paidUntil, LICENSE_GRACE_DAYS);
+      const now = new Date();
+      if (now <= paidUntil) return `✅ Actif (jusqu'au ${paidUntil.toLocaleDateString()})`;
+      if (now <= graceEnd) return `⏳ Grâce (jusqu'au ${graceEnd.toLocaleDateString()})`;
+      return `⛔ Expiré (depuis ${paidUntil.toLocaleDateString()})`;
+    }
+    if (lic.status === "EXPIRED") return "⛔ Expiré (lecture seule)";
+    return String(lic.status);
+  }
+
+  function canWrite() {
+    const lic = ensureLicense();
+    if (!lic) return true;
+    if (lic.status === "TEST") return true;
+    if (lic.status === "ACTIVE") {
+      const paidUntil = parseDate(lic.paidUntil);
+      if (!paidUntil) return true;
+      const graceEnd = addDays(paidUntil, LICENSE_GRACE_DAYS);
+      return new Date() <= graceEnd;
+    }
+    return false;
+  }
+
+  function requireWriteAccess(msg = "Abonnement expiré : mode lecture. Renouvelle pour continuer ✅") {
+    if (canWrite()) return true;
+    toast(msg);
+    return false;
+  }
+
+  // Activation simple par code (MVP) — à renforcer plus tard (serveur / signature)
+  // Format : BFM1-YYYYMMDD  (date de fin) ou BFM1-YYYYMMDD-PLAN
+  function activateWithCode(codeRaw) {
+    const code = String(codeRaw || "").trim().toUpperCase();
+    if (!code) return { ok: false, err: "Code vide" };
+    const m = code.match(/^BFM1-(\d{8})(?:-([A-Z0-9_]+))?$/);
+    if (!m) return { ok: false, err: "Format invalide (ex: BFM1-20260131)" };
+    const ymd = m[1];
+    const plan = m[2] || "STANDARD";
+    const yyyy = +ymd.slice(0,4), mm = +ymd.slice(4,6), dd = +ymd.slice(6,8);
+    const until = new Date(yyyy, mm-1, dd, 23, 59, 59);
+    if (isNaN(+until)) return { ok: false, err: "Date invalide" };
+
+    const lic = ensureLicense();
+    const newLic = { ...lic, status: "ACTIVE", paidUntil: until.toISOString(), plan, activatedAt: nowISO(), codeUsed: code };
+    saveLicense(newLic);
+    return { ok: true, lic: newLic };
+  }
+
+// Normalisation (compat anciens états)
   (function normalizeState() {
     try {
       if (Array.isArray(state.recipes)) {
@@ -348,7 +480,36 @@
     if (tab) tab.classList.add("active");
   }
 
-  function showPage(pageName) {
+  
+  function updateAppLocks() {
+    // Combine onboarding + licence : si licence expirée => blocage écriture
+    const writeOK = canWrite();
+
+    // Boutons d'actions (écriture)
+    const actionButtons = [
+      "btn-add-ingredient",
+      "btn-save-recipe",
+      "btn-add-pack",
+      "btn-save-sale",
+      "btn-add-expense",
+      "btn-add-vendeur",
+      "btn-profile-new",
+      "btn-profile-dup",
+      "btn-profile-rename",
+      "btn-profile-delete"
+    ];
+    actionButtons.forEach(id => {
+      const b = $(id);
+      if (!b) return;
+      // on laisse profil management possible même expiré ? -> ici on bloque seulement si tu veux. (On ne bloque PAS profil)
+      const lockProfile = false;
+      const shouldLock = (!writeOK) && !(id.startsWith("btn-profile") && !lockProfile);
+      b.disabled = shouldLock;
+      if (shouldLock) b.title = "Abonnement expiré : mode lecture";
+    });
+  }
+
+function showPage(pageName) {
     document.body.dataset.page = pageName;
     hideAllPages();
     const page = $(`page-${pageName}`);
@@ -602,7 +763,36 @@ const pS = safeText(state.config.produitS) || "produit";
             </div>
           </div>
         </div>
-      `;
+      
+        <hr style="margin:14px 0;opacity:.25;">
+        <div class="form-grid">
+          <div>
+            <label>Identifiant appareil (support)</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="device-id" type="text" readonly style="flex:1;min-width:240px;" />
+              <button type="button" class="btn btn-secondary" id="btn-copy-device-id">📋 Copier</button>
+            </div>
+            <div class="small" style="opacity:.8;margin-top:6px;">
+              Cet ID sert à activer le <strong>mode TEST</strong> sur tes appareils ou à aider le support.
+            </div>
+          </div>
+
+          <div>
+            <label>Abonnement (cet appareil)</label>
+            <div class="small" style="opacity:.9;">
+              Statut : <strong id="license-status">-</strong>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+              <input id="license-code" type="text" placeholder="Code d'activation (ex: BFM1-20260131)" style="flex:1;min-width:260px;" />
+              <button type="button" class="btn btn-primary" id="btn-activate-license">✅ Activer</button>
+              <button type="button" class="btn btn-secondary" id="btn-toggle-test" style="display:none;">🧪 TEST</button>
+            </div>
+            <div class="small" style="opacity:.8;margin-top:6px;">
+              Si expiré : l’app passe en <strong>mode lecture</strong> (exports OK). Grâce après expiration : <strong>14 jours</strong>.
+            </div>
+          </div>
+        </div>
+`;
 
       page.appendChild(card);
 
@@ -638,6 +828,57 @@ const pS = safeText(state.config.produitS) || "produit";
       on($("btn-export-all"), "click", exportAllProfiles);
       on($("btn-import-all"), "click", () => $("file-import-all")?.click());
       on($("file-import-all"), "change", importAllFromFile);
+
+      // --- Device ID + Licence UI ---
+      const deviceId = getDeviceId();
+      if ($("device-id")) $("device-id").value = deviceId;
+
+      const lic = ensureLicense();
+      if ($("license-status")) $("license-status").textContent = licenseStatusLabel(lic);
+
+      on($("btn-copy-device-id"), "click", async () => {
+        const val = deviceId;
+        try {
+          await navigator.clipboard.writeText(val);
+          toast("Device ID copié ✅");
+        } catch {
+          const inp = $("device-id");
+          if (inp) { inp.focus(); inp.select(); document.execCommand("copy"); toast("Device ID copié ✅"); }
+        }
+      });
+
+      on($("btn-activate-license"), "click", () => {
+        const code = $("license-code")?.value || "";
+        const res = activateWithCode(code);
+        if (!res.ok) return toast(res.err || "Activation impossible");
+        toast("Abonnement activé ✅");
+        if ($("license-status")) $("license-status").textContent = licenseStatusLabel(res.lic);
+        updateAppLocks();
+      });
+
+      // Bouton TEST visible seulement si device whitelisted
+      if (DEV_TEST_DEVICE_IDS.has(deviceId) && $("btn-toggle-test")) {
+        $("btn-toggle-test").style.display = "inline-flex";
+        $("btn-toggle-test").textContent = "🧪 TEST (ON)";
+        on($("btn-toggle-test"), "click", () => {
+          const cur = loadLicense();
+          if (cur && cur.status === "TEST") {
+            const back = { status: "ACTIVE", paidUntil: nowISO(), plan: "STANDARD", createdAt: cur.createdAt || nowISO() };
+            saveLicense(back);
+            toast("Mode TEST désactivé");
+            $("btn-toggle-test").textContent = "🧪 TEST (OFF)";
+            $("license-status").textContent = licenseStatusLabel(back);
+          } else {
+            const t = { status: "TEST", note: "Manual toggle", createdAt: (cur && cur.createdAt) ? cur.createdAt : nowISO() };
+            saveLicense(t);
+            toast("Mode TEST activé ✅");
+            $("btn-toggle-test").textContent = "🧪 TEST (ON)";
+            $("license-status").textContent = licenseStatusLabel(t);
+          }
+          updateAppLocks();
+        });
+      }
+
 
       refreshProfilesUI();
     }
@@ -2846,7 +3087,9 @@ function saleUnitsFromPacks() {
 
     // Page d'accueil par défaut
     showPage("home");
-  }
+  
+    updateAppLocks();
+}
 
   document.addEventListener("DOMContentLoaded", boot);
 
