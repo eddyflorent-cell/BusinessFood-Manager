@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -344,7 +343,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>Marge souhaitée (%) :</label>
-                        <input id="pack-margin" type="number" min="0"
+                        <input id="pack-margin" type="number" min="0" max="90"
                                value="30" class="form-control">
                     </div>
                     <div class="form-group">
@@ -566,219 +565,188 @@
 
 <!-- ======================= PAGE : TUTORIEL ======================= -->
 <section id="page-tutoriel" class="page hidden">
-  <h1>Tutoriel – BusinessFood Manager (version complète)</h1>
+  <h1>Tutoriel – BusinessFood Manager (version V6)</h1>
 
   <p class="tuto-intro">
-    Ce guide te montre le flux réel, celui qui marche au quotidien :
-    <strong>Configurer → Ingrédients → Recettes/Production → Packs → Ventes → Dashboard/Historique → Exports & Sauvegardes</strong>.
+    Cette version gère <strong>plusieurs profils</strong> (configurations complètes), une <strong>devise par profil</strong>,
+    des <strong>recettes</strong> qui peuvent <strong>déduire le stock xN</strong>, des <strong>packs modifiables</strong>,
+    et des ventes avec contrôle de disponibilité.
     <br><br>
-    ⚠️ Important : dans cette app, une “recette” sert à <strong>produire</strong> des <strong>produits finis</strong>.
-    Et si tu coches <strong>“Déduire du stock xN”</strong>, tu consommes aussi tes ingrédients (comme dans la V1).
+    Flux conseillé : <strong>Config/Profil → Ingrédients → Recettes (production) → Packs → Ventes → Dashboard/Historique → Exports</strong>.
   </p>
 
   <div class="tuto-grid">
 
-    <!-- Étape 0 : Profils / Configurations -->
+    <!-- 0) Profil -->
     <div class="tuto-step">
-      <h3>0) Profils / Configurations (très important)</h3>
-      <p><strong>Onglet : Config</strong></p>
+      <h3>0) Choisir / créer un profil (configuration complète)</h3>
+      <p><strong>Menu : Config</strong></p>
       <ul>
-        <li>Tu peux travailler avec <strong>plusieurs configurations</strong> (ex : “Boutique A”, “Boutique B”, “Janvier”, “Février”, “Test”, etc.).</li>
-        <li>Dans la page Config, une carte “<strong>Gestion des profils & données</strong>” te permet de :
+        <li>Un <strong>profil</strong> contient tout : config + ingrédients + recettes + packs + ventes + dépenses.</li>
+        <li>Dans <strong>Gestion des données</strong> :
           <ul>
-            <li><strong>Créer</strong> un profil</li>
-            <li><strong>Dupliquer</strong> (copie complète : ingrédients, recettes, stock, ventes…)</li>
-            <li><strong>Exporter / Importer</strong> un profil</li>
-            <li><strong>Exporter / Importer TOUT</strong> (tous les profils)</li>
+            <li><strong>Nouveau</strong> : crée un profil vide</li>
+            <li><strong>Dupliquer</strong> : copie totale (idéal pour tester)</li>
+            <li><strong>Renommer / Supprimer</strong></li>
           </ul>
         </li>
       </ul>
       <p class="tuto-note">
-        ➜ Conseil : 1 profil = 1 activité / 1 point de vente / 1 période. Comme ça tu ne mélanges pas tes chiffres.
+        ➜ Ici, l’app <strong>ne te sort plus</strong> de la page Config : tu peux enchaîner config + profil sans aller-retour.
       </p>
     </div>
 
-    <!-- Étape 1 : Configuration -->
+    <!-- 1) Devise -->
     <div class="tuto-step">
-      <h3>1) Configurer l’application</h3>
-      <p><strong>Onglet : Accueil → “Configurer l’application” ou menu Config</strong></p>
+      <h3>1) Devise & format (par profil)</h3>
+      <p><strong>Menu : Config</strong></p>
       <ol>
-        <li>Renseigne le <strong>type d’activité</strong> (boissons, plats, pâtisseries…).</li>
-        <li>Définis le nom de ton produit fini :
-          <ul>
-            <li><strong>Singulier</strong> (ex : bouteille, assiette, pièce)</li>
-            <li><strong>Pluriel</strong> (ex : bouteilles, assiettes, pièces)</li>
-          </ul>
-        </li>
-        <li>Optionnel : “Marque / nom du produit” (ex : “Lossi …”).</li>
-        <li>Clique <strong>“Enregistrer la configuration”</strong>.</li>
+        <li>Choisis ta <strong>devise</strong> (ex : XAF/FCFA, EUR, USD…).</li>
+        <li>Optionnel : masque/affiche la devise à l’écran (si tu veux juste des chiffres).</li>
+        <li>Enregistre : tous les montants (packs, ventes, dépenses, exports) suivent la devise du profil actif.</li>
       </ol>
+      <p class="tuto-note">
+        ➜ Astuce : 1 profil “Douala (XAF)” + 1 profil “Paris (EUR)” = tu ne mélanges jamais les chiffres.
+      </p>
     </div>
 
-    <!-- Étape 2 : Ingrédients -->
+    <!-- 2) Ingrédients -->
     <div class="tuto-step">
       <h3>2) Ajouter les ingrédients au stock</h3>
-      <p><strong>Onglet : Ingrédients</strong></p>
+      <p><strong>Menu : Ingrédients</strong></p>
       <ol>
-        <li>Remplis : <strong>Nom</strong> + <strong>Prix d’achat</strong> + <strong>Quantité</strong> + <strong>Unité</strong>.</li>
-        <li>Optionnel : <strong>Seuil d’alerte</strong> (même unité) → pratique pour voir les stocks bas.</li>
-        <li>Clique <strong>“Ajouter l’ingrédient”</strong>.</li>
+        <li>Renseigne <strong>Nom</strong>, <strong>Prix d’achat</strong>, <strong>Quantité</strong> et <strong>Unité</strong>.</li>
+        <li>Ajoute un <strong>seuil d’alerte</strong> si tu veux être prévenu des stocks bas.</li>
+        <li>Clique <strong>Ajouter l’ingrédient</strong>.</li>
+      </ol>
+    </div>
+
+    <!-- 3) Recettes -->
+    <div class="tuto-step">
+      <h3>3) Créer une recette (base) + calculer son coût</h3>
+      <p><strong>Menu : Recettes</strong></p>
+      <ol>
+        <li>Donne un <strong>nom</strong> à la recette.</li>
+        <li>Indique le <strong>nombre de produits finis</strong> générés (ex : 30 pièces).</li>
+        <li>Indique le <strong>prix de vente unitaire</strong> (utile pour la marge).</li>
+        <li>Ajoute les ingrédients (quantité + unité) puis enregistre.</li>
       </ol>
       <p class="tuto-note">
-        ➜ Si tu te trompes : utilise <strong>Modifier</strong> / <strong>Supprimer</strong> sur la fiche ingrédient.
+        ➜ Une recette sert aussi de “produit fini” pour les packs et les ventes.
       </p>
     </div>
 
-    <!-- Étape 3 : Recette -->
+    <!-- 4) Production / déduction stock xN -->
     <div class="tuto-step">
-      <h3>3) Créer une recette (et calculer le coût)</h3>
-      <p><strong>Onglet : Recettes</strong></p>
-      <ol>
-        <li>Renseigne :
-          <ul>
-            <li><strong>Nom</strong> de la recette</li>
-            <li><strong>Nombre de produits finis obtenus</strong> (ex : 120)</li>
-            <li><strong>Prix de vente d’un produit fini</strong> (ex : 200 FCFA)</li>
-          </ul>
-        </li>
-        <li>Ajoute les ingrédients 1 par 1 :
-          <ul>
-            <li>Choisis un ingrédient</li>
-            <li>Quantité + unité</li>
-            <li>Clique <strong>“Ajouter cet ingrédient”</strong></li>
-          </ul>
-        </li>
-        <li>Tu vois la liste “Ingrédients ajoutés” avec le coût calculé.</li>
-        <li>Clique <strong>“Enregistrer la recette”</strong>.</li>
-      </ol>
-      <p class="tuto-note">
-        ✅ Tu peux <strong>Modifier</strong> une recette depuis “Recettes enregistrées”.<br>
-        ⚠️ Si cette recette a déjà servi à des ventes/stock, certaines modifications peuvent être limitées pour ne pas fausser l’historique.
-      </p>
-    </div>
-
-    <!-- Étape 4 : Production / Déduire stock xN -->
-    <div class="tuto-step">
-      <h3>4) Produire (Déduire du stock xN)</h3>
-      <p><strong>Onglet : Recettes</strong></p>
+      <h3>4) Produire : “Déduire du stock” xN</h3>
+      <p><strong>Menu : Recettes</strong></p>
       <ul>
-        <li>Quand tu es prêt à fabriquer “en vrai”, utilise l’option :
-          <strong>Déduire du stock</strong> + multiplicateur <strong>x1 / x2 / x3…</strong></li>
-        <li><strong>xN</strong> signifie : “je fais N fournées identiques”.</li>
-        <li>Si c’est coché :
+        <li>Active <strong>Déduire du stock</strong> si tu fabriques réellement (consomme les ingrédients).</li>
+        <li>Choisis <strong>xN</strong> (x1, x2, x3…) = nombre de fournées identiques.</li>
+        <li>Si activé :
           <ul>
-            <li>✅ les ingrédients sont <strong>déduits</strong> du stock (quantités × N)</li>
-            <li>✅ tes <strong>produits finis</strong> augmentent (produits × N)</li>
+            <li>✅ ingrédients déduits ×N</li>
+            <li>✅ produits finis ajoutés ×N</li>
           </ul>
         </li>
-        <li>Si c’est décoché : tu enregistres la recette mais <strong>sans impacter</strong> les ingrédients (utile pour simuler / préparer).</li>
+        <li>Si désactivé : la recette est enregistrée, mais <strong>sans impacter</strong> le stock (utile pour préparer/simuler).</li>
+      </ul>
+    </div>
+
+    <!-- 5) Modifier recette -->
+    <div class="tuto-step">
+      <h3>5) Modifier une recette</h3>
+      <p><strong>Menu : Recettes → Recettes enregistrées</strong></p>
+      <ul>
+        <li>Clique <strong>Modifier</strong> sur la recette.</li>
+        <li>Tu peux ajuster nom / ingrédients / prix / quantités.</li>
+        <li>⚠️ Si la recette a déjà servi (packs/ventes), certaines modifications peuvent être limitées pour ne pas casser l’historique.</li>
+      </ul>
+    </div>
+
+    <!-- 6) Packs -->
+    <div class="tuto-step">
+      <h3>6) Packs : créer, marge, suggestion, modification</h3>
+      <p><strong>Menu : Packs</strong></p>
+      <ol>
+        <li>Donne un <strong>nom de pack</strong>.</li>
+        <li>Ajoute des lignes : <strong>Recette</strong> + <strong>Quantité</strong>.</li>
+        <li>Le <strong>coût total</strong> se calcule automatiquement.</li>
+        <li>Renseigne la <strong>marge souhaitée (%)</strong> : la <strong>Suggestion</strong> de prix se met à jour en direct (marge sans limite).</li>
+        <li>Saisis le prix du pack (ou utilise la suggestion), puis <strong>Créer le pack</strong>.</li>
+      </ol>
+      <p class="tuto-note">
+        ✅ Tu peux <strong>Modifier</strong> un pack existant (recharge le formulaire) puis “Mettre à jour le pack”.<br>
+        ⚠️ Le logiciel bloque la création d’un pack vendu à perte (<em>prix &lt; coût</em>).
+      </p>
+    </div>
+
+    <!-- 7) Ventes -->
+    <div class="tuto-step">
+      <h3>7) Ventes : packs + ventes à l’unité (par recette)</h3>
+      <p><strong>Menu : Ventes</strong></p>
+      <ol>
+        <li>Renseigne date/heure + vendeur + lieu.</li>
+        <li>Ajoute des <strong>packs</strong> (quantité). Le stock est contrôlé automatiquement.</li>
+        <li>Pour vendre <strong>hors pack</strong> :
+          <ul>
+            <li>Ajoute une ligne <strong>Recette → Quantité → Prix</strong></li>
+            <li>Le prix peut être pré-rempli depuis le prix unitaire de la recette</li>
+            <li>Tu peux ajouter plusieurs recettes dans la même vente</li>
+          </ul>
+        </li>
+        <li>Enregistre la vente : l’app déduit le stock des recettes concernées.</li>
+      </ol>
+      <p class="tuto-note">
+        ➜ Si un pack/produit fini n’est plus disponible, la vente est bloquée avec une alerte claire.
+      </p>
+    </div>
+
+    <!-- 8) Dépenses -->
+    <div class="tuto-step">
+      <h3>8) Dépenses</h3>
+      <p><strong>Menu : Dépenses</strong></p>
+      <ol>
+        <li>Ajoute une dépense : date, catégorie, montant, note.</li>
+        <li>Les dépenses impactent le bénéfice net affiché sur le Dashboard.</li>
+      </ol>
+    </div>
+
+    <!-- 9) Historique + exports -->
+    <div class="tuto-step">
+      <h3>9) Historique & exports (PDF / CSV / WhatsApp)</h3>
+      <p><strong>Menu : Historique</strong></p>
+      <ul>
+        <li><strong>Exporter PDF</strong> : génère un PDF à partager / imprimer.</li>
+        <li><strong>Exporter CSV</strong> : parfait pour Excel (analyse, compta).</li>
+        <li><strong>Partager WhatsApp</strong> : envoi rapide des résumés.</li>
       </ul>
       <p class="tuto-note">
-        ➜ C’est exactement l’esprit “V1 : déduire du stock x1”, mais en plus propre (avec xN).
+        ➜ Bon réflexe : export CSV/PDF régulièrement (clé USB / mail / WhatsApp) pour éviter les pertes.
       </p>
     </div>
 
-    <!-- Étape 5 : Packs -->
+    <!-- 10) Export/import profils -->
     <div class="tuto-step">
-      <h3>5) Créer des packs (avec marge + suggestion)</h3>
-      <p><strong>Onglet : Packs</strong></p>
-      <ol>
-        <li>Donne un <strong>nom de pack</strong> (ex : “Formule brunch”).</li>
-        <li>Ajoute une ou plusieurs lignes :
-          <ul>
-            <li><strong>Recette</strong> (produit fini)</li>
-            <li><strong>Quantité</strong> incluse dans le pack</li>
-          </ul>
-        </li>
-        <li>Le système calcule le <strong>coût total du pack</strong>.</li>
-        <li>Tu mets ta <strong>marge souhaitée (%)</strong> → la <strong>Suggestion</strong> de prix se met à jour.</li>
-        <li>Tu peux laisser le prix vide pour auto-calcul, ou saisir ton prix.</li>
-        <li>Clique <strong>“Créer le pack”</strong>.</li>
-      </ol>
-      <p class="tuto-note">
-        ⚠️ Les packs sont liés au <strong>stock réel</strong> : si les produits finis d’une recette ne sont plus dispo,
-        le système t’alerte / bloque pour éviter de vendre du stock inexistant.
-      </p>
-    </div>
-
-    <!-- Étape 6 : Ventes -->
-    <div class="tuto-step">
-      <h3>6) Enregistrer une vente (packs + unités)</h3>
-      <p><strong>Onglet : Ventes</strong></p>
-      <ol>
-        <li>Renseigne <strong>Date</strong>, <strong>Heure</strong>, <strong>Vendeur</strong>, <strong>Lieu</strong>.</li>
-        <li>Ajoute des packs :
-          <ul>
-            <li>Choisis un pack</li>
-            <li>Quantité vendue</li>
-            <li>Clique <strong>“Ajouter ce pack”</strong></li>
-          </ul>
-        </li>
-        <li>Optionnel : vente à l’unité <strong>hors packs</strong> (Unités vendues + prix unitaire).</li>
-        <li>Clique <strong>“Enregistrer la vente”</strong>.</li>
-      </ol>
-      <p class="tuto-note">
-        ✅ La vente apparaît dans “Ventes du jour” et dans l’<strong>Historique</strong>.<br>
-        ⚠️ Si un pack est indisponible (stock insuffisant), la vente est bloquée avec un message clair.
-      </p>
-    </div>
-
-    <!-- Étape 7 : Dépenses -->
-    <div class="tuto-step">
-      <h3>7) Enregistrer les dépenses</h3>
-      <p><strong>Onglet : Dépenses</strong></p>
-      <ol>
-        <li>Choisis la <strong>date réelle</strong>, une <strong>catégorie</strong> (gaz, transport, salaire…), le <strong>montant</strong>.</li>
-        <li>Clique <strong>“Enregistrer la dépense”</strong>.</li>
-        <li>Tu peux <strong>modifier</strong> ou <strong>supprimer</strong> une dépense.</li>
-      </ol>
-    </div>
-
-    <!-- Étape 8 : Dashboard + Historique + Exports -->
-    <div class="tuto-step">
-      <h3>8) Lire tes résultats + exporter</h3>
-      <p><strong>Onglets : Dashboard & Historique</strong></p>
+      <h3>10) Sauvegarder / Exporter / Importer tes données</h3>
+      <p><strong>Menu : Config → Gestion des données</strong></p>
       <ul>
-        <li><strong>Dashboard</strong> : revenu total, dépenses, bénéfice net, stock restant, capacité, meilleur vendeur, meilleur pack.</li>
-        <li><strong>Historique</strong> : tout est listé, et tu peux :
-          <ul>
-            <li><strong>Exporter PDF</strong></li>
-            <li><strong>Exporter CSV</strong></li>
-            <li><strong>Partager WhatsApp</strong></li>
-          </ul>
-        </li>
+        <li><strong>Sauvegarder maintenant</strong> : point de contrôle manuel (en plus de l’auto-save).</li>
+        <li><strong>Export profil</strong> : télécharge un fichier JSON du profil actif.</li>
+        <li><strong>Import profil</strong> : charge un JSON pour restaurer/créer un profil.</li>
+        <li><strong>Export/Import TOUT</strong> : migration complète (tous les profils) si tu changes d’appareil.</li>
       </ul>
-      <p class="tuto-note">
-        ➜ Réflexe pro : exporte régulièrement (CSV/PDF) pour sauvegarder hors du téléphone/PC.
-      </p>
-    </div>
-
-    <!-- Étape 9 : Sauvegarde / Import / Export (rappel) -->
-    <div class="tuto-step">
-      <h3>9) Sauvegardes & transferts (clé USB / nouveau téléphone)</h3>
-      <p><strong>Onglet : Config</strong></p>
-      <ul>
-        <li>L’app enregistre automatiquement les données dans le navigateur (localStorage).</li>
-        <li>Pour sécuriser et transférer :
-          <ul>
-            <li><strong>Exporter le profil actif</strong> (JSON)</li>
-            <li><strong>Importer un profil</strong> (JSON) sur un autre appareil</li>
-            <li><strong>Exporter / Importer TOUT</strong> si tu veux tout migrer d’un coup</li>
-          </ul>
-        </li>
-      </ul>
-      <p class="tuto-note">
-        ➜ Si tu changes de téléphone/navigateur, l’import JSON te remet tout : ingrédients, recettes, packs, ventes, dépenses, etc.
-      </p>
     </div>
 
   </div>
 
   <p class="tuto-outro">
-    💡 Routine simple : <strong>Produire (Recettes + Déduire xN) → Vendre → Dépenses → Export</strong>.<br>
-    Et tu gardes une trace claire avec l’Historique + les profils.
+    💡 Routine “pro” : <strong>Produire (déduire xN) → Packs → Ventes → Dépenses → Historique → Export</strong>.
+    <br>
+    Et pour tester sans risque : <strong>Dupliquer un profil</strong> puis expérimenter.
   </p>
 </section>
+
 
 
 <footer class="app-footer">
@@ -789,3 +757,4 @@
 <script src="app.js"></script>
 </body>
 </html>
+
