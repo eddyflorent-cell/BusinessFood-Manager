@@ -22,10 +22,87 @@
   };
   const pad2 = (n) => String(n).padStart(2, "0");
 
-  const money = (n) => {
-    const v = Math.round(toNum(n, 0));
-    try { return v.toLocaleString("fr-FR") + " FCFA"; } catch { return `${v} FCFA`; }
+  // =========================
+  // Devise / format monétaire (par profil)
+  // =========================
+  const _trim = (v) => String(v ?? "").trim();
+
+  const currencyLabel = () => {
+    try {
+      const sym = _trim(state?.config?.currencySymbol);
+      return sym || "FCFA";
+    } catch {
+      return "FCFA";
+    }
   };
+
+  const getCurrencyCfg = () => {
+    try {
+      const cfg = state?.config || {};
+      const symbol = _trim(cfg.currencySymbol) || "FCFA";
+      const locale = _trim(cfg.currencyLocale) || "fr-FR";
+      let decimals = Number(cfg.currencyDecimals);
+      decimals = Number.isFinite(decimals) ? Math.max(0, Math.min(6, Math.floor(decimals))) : 0;
+      const position = cfg.currencyPosition === "prefix" ? "prefix" : "suffix";
+      const space = (cfg.currencySpace === false) ? "" : " ";
+      return { symbol, locale, decimals, position, space };
+    } catch {
+      return { symbol: "FCFA", locale: "fr-FR", decimals: 0, position: "suffix", space: " " };
+    }
+  };
+
+  const formatNumber = (n, locale, decimals) => {
+    const v = toNum(n, 0);
+    try {
+      return new Intl.NumberFormat(locale || undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      }).format(v);
+    } catch {
+      // fallback simple
+      const pow = Math.pow(10, decimals);
+      return String(Math.round(v * pow) / pow);
+    }
+  };
+
+  const money = (n) => {
+    const { symbol, locale, decimals, position, space } = getCurrencyCfg();
+    const num = formatNumber(n, locale, decimals);
+    if (!symbol) return num;
+    return position === "prefix" ? `${symbol}${space}${num}` : `${num}${space}${symbol}`;
+  };
+
+  // Pour rendre l'UI "universelle" sans modifier le HTML:
+  // on remplace les libellés (FCFA) en gardant une copie de l'original (permet de changer plusieurs fois).
+  const _currencyTextCache = new WeakMap();
+
+  function applyCurrencyUITexts(scope = document) {
+    const sym = currencyLabel();
+
+    // 1) Text nodes
+    try {
+      const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const orig = _currencyTextCache.get(node) ?? node.nodeValue;
+        if (!_currencyTextCache.has(node)) _currencyTextCache.set(node, orig);
+
+        if (orig && orig.includes("FCFA")) {
+          node.nodeValue = orig.split("FCFA").join(sym);
+        }
+      }
+    } catch {}
+
+    // 2) Placeholders
+    try {
+      scope.querySelectorAll?.('[placeholder*="FCFA"]').forEach((el) => {
+        if (!el.dataset) return;
+        if (!el.dataset.origPlaceholder) el.dataset.origPlaceholder = el.placeholder;
+        el.placeholder = (el.dataset.origPlaceholder || "").split("FCFA").join(sym);
+      });
+    } catch {}
+  }
+
 
   const dateISO = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const timeISO = (d = new Date()) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -153,6 +230,41 @@
       saveProfilesIndex();
     }
 
+    // Met à jour l'UI des profils (select + label). À appeler après création / import / switch.
+    function refreshProfilesUI() {
+      const sel = $("profile-select");
+      const lab = $("profile-active-label");
+      if (!sel) return;
+
+      // Assurer l'intégrité de l'index profils
+      if (!profilesIndex || !Array.isArray(profilesIndex.profiles) || profilesIndex.profiles.length === 0) {
+        profilesIndex = loadProfilesIndex();
+      }
+
+      // Reconstruire options
+      sel.innerHTML = "";
+      for (const p of profilesIndex.profiles) {
+        const opt = document.createElement("option");
+        opt.value = String(p.id || "default");
+        opt.textContent = p.name || (opt.value === "default" ? "Principal" : opt.value);
+        sel.appendChild(opt);
+      }
+
+      const currentId = String(profilesIndex.current || "default");
+      // Si l'id courant n'existe plus, retomber sur le premier
+      const exists = profilesIndex.profiles.some(p => String(p.id) === currentId);
+      const finalId = exists ? currentId : String(profilesIndex.profiles[0].id || "default");
+      profilesIndex.current = finalId;
+      saveProfilesIndex();
+
+      sel.value = finalId;
+
+      const active = profilesIndex.profiles.find(p => String(p.id) === finalId);
+      if (lab) lab.textContent = active?.name || (finalId === "default" ? "Principal" : finalId);
+    }
+
+
+
 
 
   const defaultState = () => ({
@@ -161,7 +273,13 @@
       activite: "",
       produitS: "produit",
       produitP: "produits",
-      exemple: ""
+      exemple: "",
+      // Devise (par profil)
+      currencySymbol: "FCFA",      // affichage: "FCFA", "€", "$", etc.
+      currencyLocale: "fr-FR",     // format des nombres
+      currencyDecimals: 0,         // 0 pour FCFA, 2 pour EUR/USD…
+      currencyPosition: "suffix",  // "suffix" ou "prefix"
+      currencySpace: true          // espace entre nombre et symbole
     },
     ingredients: [], // {id,name,priceTotal,baseQtyTotal,baseQtyRemaining,baseUnit,displayUnit,alertBaseQty}
     recipes: [],     // production batches
@@ -245,7 +363,8 @@
     if (pageName === "depenses") renderExpenses();
     if (pageName === "dashboard") renderDashboard();
     if (pageName === "historique") renderHistorique();
-    if (pageName === "config") { renderConfig(); ensureDataManagerUI(); }
+    if (pageName === "config") { renderConfig(); ensureCurrencyUI(); ensureDataManagerUI(); }
+    applyCurrencyUITexts(page || document);
   }
 
   // Expose pour les onclick du HTML
@@ -259,9 +378,149 @@
     if ($("cfg-produit-s")) $("cfg-produit-s").value = state.config.produitS || "";
     if ($("cfg-produit-p")) $("cfg-produit-p").value = state.config.produitP || "";
     if ($("cfg-exemple")) $("cfg-exemple").value = state.config.exemple || "";
+
+    // devise (UI injectée)
+    if ($("cfg-currency-symbol")) $("cfg-currency-symbol").value = state.config.currencySymbol || "FCFA";
+    if ($("cfg-currency-locale")) $("cfg-currency-locale").value = state.config.currencyLocale || "fr-FR";
+    if ($("cfg-currency-decimals")) $("cfg-currency-decimals").value = String(toNum(state.config.currencyDecimals, 0));
+    if ($("cfg-currency-position")) $("cfg-currency-position").value = (state.config.currencyPosition === "prefix") ? "prefix" : "suffix";
+    if ($("cfg-currency-space")) $("cfg-currency-space").checked = (state.config.currencySpace !== false);
+
+    refreshCurrencyPreview?.();
   }
 
-  function applyConfigLabels() {
+  
+  // =========================
+  // 3bis) UI Devise (par profil) — injecté dans la page Config
+  // =========================
+  function ensureCurrencyUI() {
+    const page = $("page-config");
+    if (!page) return;
+
+    const card = page.querySelector(".card");
+    if (!card) return;
+
+    if ($("bfm-currency-block")) return;
+
+    const block = document.createElement("div");
+    block.id = "bfm-currency-block";
+    block.style.marginTop = "14px";
+    block.innerHTML = `
+      <hr style="margin:14px 0; opacity:.25" />
+      <h3 style="margin:8px 0 6px 0">Devise & format</h3>
+      <p style="margin:0 0 10px 0; opacity:.85">
+        La devise est <b>liée au profil actif</b>. Tu peux exporter/importer des profils avec leur devise.
+      </p>
+
+      <label>Préréglage :</label>
+      <select id="cfg-currency-preset">
+        <option value="XAF">FCFA (XAF)</option>
+        <option value="EUR">Euro (€)</option>
+        <option value="USD">Dollar ($)</option>
+        <option value="GBP">Livre (£)</option>
+        <option value="NGN">Naira (₦)</option>
+        <option value="CUSTOM">Autre…</option>
+      </select>
+
+      <label>Symbole affiché :</label>
+      <input type="text" id="cfg-currency-symbol" placeholder="Ex : FCFA, €, $" />
+
+      <label>Format des nombres :</label>
+      <select id="cfg-currency-locale">
+        <option value="fr-FR">fr-FR (1 234,56)</option>
+        <option value="en-US">en-US (1,234.56)</option>
+        <option value="en-GB">en-GB (1,234.56)</option>
+        <option value="fr-CM">fr-CM</option>
+      </select>
+
+      <label>Décimales :</label>
+      <input type="number" id="cfg-currency-decimals" min="0" max="6" step="1" />
+
+      <label>Position du symbole :</label>
+      <select id="cfg-currency-position">
+        <option value="suffix">Après le montant (123 FCFA)</option>
+        <option value="prefix">Avant le montant (FCFA 123)</option>
+      </select>
+
+      <label style="display:flex;gap:10px;align-items:center;margin-top:10px">
+        <input type="checkbox" id="cfg-currency-space" />
+        <span>Mettre un espace entre le nombre et le symbole</span>
+      </label>
+
+      <p id="cfg-currency-preview" style="margin:10px 0 0 0; font-weight:700"></p>
+    `;
+
+    const btn = $("btn-save-config");
+    if (btn && btn.parentElement === card) {
+      card.insertBefore(block, btn);
+    } else {
+      card.appendChild(block);
+    }
+
+    // wiring
+    const preset = $("cfg-currency-preset");
+    const sym = $("cfg-currency-symbol");
+    const loc = $("cfg-currency-locale");
+    const dec = $("cfg-currency-decimals");
+    const pos = $("cfg-currency-position");
+    const spc = $("cfg-currency-space");
+
+    // preset -> champs
+    function applyPreset(p) {
+      if (!p) return;
+      if (p === "XAF") { if (sym) sym.value = "FCFA"; if (loc) loc.value = "fr-FR"; if (dec) dec.value = "0"; if (pos) pos.value = "suffix"; if (spc) spc.checked = true; }
+      if (p === "EUR") { if (sym) sym.value = "€";    if (loc) loc.value = "fr-FR"; if (dec) dec.value = "2"; if (pos) pos.value = "suffix"; if (spc) spc.checked = true; }
+      if (p === "USD") { if (sym) sym.value = "$";    if (loc) loc.value = "en-US"; if (dec) dec.value = "2"; if (pos) pos.value = "prefix"; if (spc) spc.checked = true; }
+      if (p === "GBP") { if (sym) sym.value = "£";    if (loc) loc.value = "en-GB"; if (dec) dec.value = "2"; if (pos) pos.value = "prefix"; if (spc) spc.checked = true; }
+      if (p === "NGN") { if (sym) sym.value = "₦";    if (loc) loc.value = "en-US"; if (dec) dec.value = "0"; if (pos) pos.value = "prefix"; if (spc) spc.checked = true; }
+    }
+
+    on(preset, "change", () => {
+      if (preset.value !== "CUSTOM") applyPreset(preset.value);
+      refreshCurrencyPreview();
+    });
+
+    ["input", "change"].forEach(evt => {
+      on(sym, evt, refreshCurrencyPreview);
+      on(loc, evt, refreshCurrencyPreview);
+      on(dec, evt, refreshCurrencyPreview);
+      on(pos, evt, refreshCurrencyPreview);
+      on(spc, evt, refreshCurrencyPreview);
+    });
+
+    // init values from state
+    if (preset) {
+      const currentSym = safeText(state.config.currencySymbol) || "FCFA";
+      preset.value = (currentSym === "FCFA") ? "XAF"
+                   : (currentSym === "€") ? "EUR"
+                   : (currentSym === "$") ? "USD"
+                   : (currentSym === "£") ? "GBP"
+                   : (currentSym === "₦") ? "NGN"
+                   : "CUSTOM";
+    }
+
+    renderConfig(); // remplit les champs + preview
+  }
+
+  function refreshCurrencyPreview() {
+    const sym = safeText($("cfg-currency-symbol")?.value) || "FCFA";
+    const locale = safeText($("cfg-currency-locale")?.value) || "fr-FR";
+    const decimals = Math.max(0, Math.min(6, Math.floor(toNum($("cfg-currency-decimals")?.value, 0))));
+    const position = ($("cfg-currency-position")?.value === "prefix") ? "prefix" : "suffix";
+    const space = ($("cfg-currency-space")?.checked !== false);
+
+    let formatted = "1234.56";
+    try {
+      formatted = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(1234.56);
+    } catch {}
+
+    const out = (position === "prefix")
+      ? `${sym}${space ? " " : ""}${formatted}`
+      : `${formatted}${space ? " " : ""}${sym}`;
+
+    if ($("cfg-currency-preview")) $("cfg-currency-preview").textContent = `Aperçu : ${out}`;
+  }
+function applyConfigLabels() {
     const pS = safeText(state.config.produitS) || "produit";
     const pP = safeText(state.config.produitP) || "produits";
 
@@ -437,7 +696,9 @@
       initDefaults();
       ensureDataManagerUI();
       refreshProfilesUI();
-      showPage("home");
+      refreshProfilesUI();
+      renderConfig();
+      showPage("config");
       toast(`Profil créé : ${name} ✅`);
     }
 
@@ -478,7 +739,9 @@
       state = loadState(profileStoreKey(profilesIndex.current));
       initDefaults();
       refreshProfilesUI();
-      showPage("home");
+      renderConfig();
+      showPage("config");
+
       toast("Profil supprimé.");
     }
 
@@ -628,10 +891,19 @@
     state.config.produitP = safeText($("cfg-produit-p")?.value) || "produits";
     state.config.exemple  = safeText($("cfg-exemple")?.value);
 
+    // devise (si la UI est présente)
+    if ($("cfg-currency-symbol")) state.config.currencySymbol = safeText($("cfg-currency-symbol").value) || "FCFA";
+    if ($("cfg-currency-locale")) state.config.currencyLocale = safeText($("cfg-currency-locale").value) || "fr-FR";
+    if ($("cfg-currency-decimals")) state.config.currencyDecimals = Math.max(0, Math.min(6, Math.floor(toNum($("cfg-currency-decimals").value, 0))));
+    if ($("cfg-currency-position")) state.config.currencyPosition = ($("cfg-currency-position").value === "prefix") ? "prefix" : "suffix";
+    if ($("cfg-currency-space")) state.config.currencySpace = !!$("cfg-currency-space").checked;
+
     saveState();
     applyConfigLabels();
-    // retour accueil
-    showPage("home");
+    applyCurrencyUITexts(document);
+
+    // rester sur la config (pas de "kick")
+    showPage("config");
     toast("Configuration enregistrée ✅");
   }
 
@@ -738,7 +1010,7 @@
     const name = prompt("Nom de l'ingrédient :", ing.name);
     if (name == null) return;
 
-    const price = prompt("Prix d'achat total (FCFA) :", String(ing.priceTotal));
+    const price = prompt("Prix d'achat total (" + currencyLabel() + ") :", String(ing.priceTotal));
     if (price == null) return;
 
     const qtyDisplay = baseQtyToDisplay(ing.baseQtyTotal, ing.baseUnit, ing.displayUnit);
@@ -804,7 +1076,7 @@
               `Restant : ${ingredientDisplayRemaining(ing)} / ${ingredientDisplayTotal(ing)}`
             ]),
             el("div", { class: "small", style: "opacity:.9;" }, [
-              `Prix total : ${money(ing.priceTotal)} • Prix/unité (${unitLabel}) : ${roundSmart(ppu)} FCFA`
+              `Prix total : ${money(ing.priceTotal)} • Prix/unité (${unitLabel}) : ${money(ppu)}`
             ]),
             el("div", { class: "small", style: "opacity:.9;" }, [
               `Valeur stock : ${money(ingredientStockValue(ing))}${low ? " • ⚠️ Stock bas" : ""}`
@@ -1297,10 +1569,10 @@
           el("div", {}, [
             el("h3", {}, [r.name]),
             el("div", { class: "small", style: "opacity:.9;" }, [
-              `Production : ${r.producedQty} (restant: ${Math.floor(toNum(r.remainingQty, r.producedQty))}) • Coût total : ${money(r.costTotal)} • Coût/unité : ${roundSmart(r.costPerUnit)} FCFA`
+              `Production : ${r.producedQty} (restant: ${Math.floor(toNum(r.remainingQty, r.producedQty))}) • Coût total : ${money(r.costTotal)} • Coût/unité : ${money(r.costPerUnit)}`
             ]),
             el("div", { class: "small", style: "opacity:.9;" }, [
-              `Prix vente/unité : ${money(r.salePrice)} • Marge/unité : ${roundSmart(marginUnit)} FCFA (${roundSmart(marginPct)}%)`
+              `Prix vente/unité : ${money(r.salePrice)} • Marge/unité : ${money(marginUnit)} (${roundSmart(marginPct)}%)`
             ]),
             el("div", { class: "small", style: "opacity:.9;" }, [
               `Capacité théorique restante (si on refait cette recette) : ${cap} ${state.config.produitP || "produits"}`
@@ -1367,6 +1639,82 @@
      7) Packs
   ========================== */
   let packDraftRows = []; // [{id, recipeId, qty}]
+
+  let editingPackId = null; // id du pack en cours de modification (ou null)
+
+  function setPackEditMode(on) {
+    const btn = $("btn-add-pack");
+    if (btn) btn.textContent = on ? "💾 Mettre à jour le pack" : "➜ Créer le pack";
+
+    // Bouton annuler (créé dynamiquement pour ne pas toucher au HTML)
+    let cancel = $("btn-cancel-pack-edit");
+    if (on) {
+      if (!cancel && btn && btn.parentElement) {
+        cancel = el("button", {
+          id: "btn-cancel-pack-edit",
+          type: "button",
+          class: "btn btn-secondary",
+          style: "margin-top:12px;margin-left:8px;"
+        }, ["Annuler"]);
+        btn.parentElement.appendChild(cancel);
+        cancel.addEventListener("click", cancelPackEdit);
+      }
+      if (cancel) cancel.style.display = "";
+      // Titre du bloc pack (optionnel)
+      const h3 = document.querySelector("#page-packs .grid-2 .card h3");
+      if (h3) h3.textContent = "Modifier le pack";
+    } else {
+      if (cancel) cancel.style.display = "none";
+      const h3 = document.querySelector("#page-packs .grid-2 .card h3");
+      if (h3) h3.textContent = "Créer un nouveau pack";
+    }
+  }
+
+  function resetPackForm() {
+    if ($("pack-nom")) $("pack-nom").value = "";
+    if ($("pack-price")) $("pack-price").value = "";
+    // on laisse la marge telle que l'utilisateur l'a mise (pratique)
+    packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
+    editingPackId = null;
+    setPackEditMode(false);
+  }
+
+  function beginEditPack(id) {
+    const p = state.packs.find(x => x.id === id);
+    if (!p) return toast("Pack introuvable.");
+
+    const used = state.sales.some(s => (s.packs || []).some(pp => pp.packId === id));
+    if (used) {
+      if (!confirm("Ce pack a déjà été vendu. Le modifier n'affecte pas l'historique, mais change le pack pour les futures ventes. Continuer ?")) return;
+    }
+
+    editingPackId = id;
+    setPackEditMode(true);
+
+    if ($("pack-nom")) $("pack-nom").value = p.name || "";
+    if ($("pack-margin")) $("pack-margin").value = toNum(p.margin, 0);
+    if ($("pack-price")) $("pack-price").value = toNum(p.price, 0);
+
+    // reconstitue les lignes à partir des items du pack
+    const items = (p.items || [])
+      .filter(it => it && it.recipeId)
+      .map(it => ({ id: uid(), recipeId: it.recipeId, qty: Math.max(1, Math.floor(toNum(it.qty, 1))) }));
+
+    packDraftRows = items.length ? items : [{ id: uid(), recipeId: "", qty: 1 }];
+
+    renderPackDraft();
+
+    // focus + scroll
+    const inputName = $("pack-nom");
+    if (inputName) inputName.focus();
+    toast("Mode modification activé ✏️");
+  }
+
+  function cancelPackEdit() {
+    resetPackForm();
+    renderPackDraft();
+    toast("Modification annulée.");
+  }
 
   function refreshPackRecipeOptions() {
     // rien à faire ici directement: options sont rendues dans les rows
@@ -1516,7 +1864,7 @@
     }
 
     // auto-calc du prix si vide
-    const margin = clamp(toNum($("pack-margin")?.value, 30), 0, 90);
+    const margin = Math.max(0, toNum($("pack-margin")?.value, 30)); // marge libre (pas de max)
     const priceInput = $("pack-price");
     if (priceInput && safeText(priceInput.value) === "") {
       const suggested = Math.ceil(total * (1 + margin / 100));
@@ -1535,7 +1883,7 @@
 
   function addPack() {
     const name = safeText($("pack-nom")?.value);
-    const margin = clamp(toNum($("pack-margin")?.value, 30), 0, 90);
+    const margin = Math.max(0, toNum($("pack-margin")?.value, 30)); // marge libre (pas de max)
     const manualPrice = safeText($("pack-price")?.value);
 
     if (!name) return toast("Nom du pack manquant.");
@@ -1569,6 +1917,31 @@
 
     if (price < cost - 1e-9) return toast("Pack vendu à perte : prix < coût. Corrige le prix.");
 
+    if (editingPackId) {
+      const p = state.packs.find(x => x.id === editingPackId);
+      if (!p) {
+        editingPackId = null;
+        setPackEditMode(false);
+        return toast("Pack en édition introuvable. Recommence.");
+      }
+      p.name = name;
+      p.items = expanded;
+      p.cost = cost;
+      p.margin = margin;
+      p.price = price;
+      p.updatedAt = new Date().toISOString();
+
+      // reset draft
+      resetPackForm();
+
+      saveState();
+      renderPackDraft();
+      renderPacks();
+      refreshSalePackSelect();
+      toast("Pack mis à jour ✅");
+      return;
+    }
+
     const pack = {
       id: uid(),
       name,
@@ -1582,9 +1955,7 @@
     state.packs.push(pack);
 
     // reset draft
-    if ($("pack-nom")) $("pack-nom").value = "";
-    if ($("pack-price")) $("pack-price").value = "";
-    packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
+    resetPackForm();
 
     saveState();
     renderPackDraft();
@@ -1630,7 +2001,10 @@
                 `Coût : ${money(p.cost)} • Prix : ${money(p.price)} • Marge : ${money(marginAbs)} (${roundSmart(marginPct)}%)`
               ])
             ]),
-            el("button", { class: "btn btn-pink", type: "button", onclick: () => deletePack(p.id) }, ["Supprimer"])
+            el("div", { style: "display:flex;flex-direction:column;gap:8px;min-width:160px;" }, [
+              el("button", { class: "btn btn-secondary", type: "button", onclick: () => beginEditPack(p.id) }, ["Modifier"]),
+              el("button", { class: "btn btn-pink", type: "button", onclick: () => deletePack(p.id) }, ["Supprimer"])
+            ])
           ]),
           el("details", { style: "margin-top:10px;" }, [
             el("summary", {}, ["Voir contenu du pack"]),
@@ -2189,7 +2563,7 @@ function saleUnitsFromPacks() {
     const invValue = toNum(state.inventory.finishedValue, 0);
 
     if ($("dash-stats-ventes")) $("dash-stats-ventes").textContent =
-      `Analyse ventes : ${state.sales.length} vente(s), panier moyen ${money(state.sales.length ? (revenueTotal / state.sales.length) : 0)}, coût moyen/unité ${roundSmart(avgCost)} FCFA`;
+      `Analyse ventes : ${state.sales.length} vente(s), panier moyen ${money(state.sales.length ? (revenueTotal / state.sales.length) : 0)}, coût moyen/unité ${money(avgCost)}`;
 
     // ingrédient le plus "cher" en valeur de stock
     const topIng = [...state.ingredients]
