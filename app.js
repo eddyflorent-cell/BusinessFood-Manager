@@ -333,13 +333,77 @@
   ========================== */
   const LICENSE_GRACE_DAYS = 14;
 
-  // ⚠️ Liste blanche des appareils autorisés pour le MODE TEST (à toi de gérer)
-  const DEV_TEST_DEVICE_IDS = new Set([
-    "8e4718f6-a4b0-4348-99a0-01da86b7915a",
-    "6e532737-6930-46f0-ad7c-02e516e528a3"
-  ]);
+  // ⚠️ MODE TEST — Whitelist externe (GitHub Pages friendly)
+// Objectif : ne plus modifier app.js à chaque fois qu’un nouvel appareil de test apparaît.
+// - L’app tente de charger ./test-devices.json (même dossier que le HTML/app.js)
+// - Si offline / erreur : elle utilise le cache local (si déjà récupéré) + une liste "secours".
+const DEV_TEST_DEVICES_URL = "./test-devices.json";
+const LS_TESTDEV_CACHE_KEY = "bfm_test_devices_cache_v1";
+const LS_TESTDEV_CACHE_TS_KEY = "bfm_test_devices_cache_ts_v1";
 
-  const LS_DEVICE_ID_KEY = "bfm_device_id_v1";
+// Liste "secours" (au cas où le JSON n’est pas dispo). Tu peux la laisser (ou la vider).
+const DEV_TEST_DEVICE_IDS_FALLBACK = new Set([
+  "8e4718f6-a4b0-4348-99a0-01da86b7915a",
+  "6e532737-6930-46f0-ad7c-02e516e528a3",
+  "091d7fb2-49a1-4b41-b109-38d48eccb2e4"
+]);
+
+// Whitelist effective (fallback + cache + fetch)
+let DEV_TEST_DEVICE_IDS = new Set([...DEV_TEST_DEVICE_IDS_FALLBACK]);
+
+function loadCachedTestDevices() {
+  try {
+    const raw = localStorage.getItem(LS_TESTDEV_CACHE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    const arr = Array.isArray(data?.testDevices) ? data.testDevices : (Array.isArray(data) ? data : []);
+    DEV_TEST_DEVICE_IDS = new Set([
+      ...DEV_TEST_DEVICE_IDS_FALLBACK,
+      ...arr.map(x => String(x || "").trim()).filter(Boolean)
+    ]);
+  } catch {}
+}
+
+async function refreshTestDevicesFromUrl({ timeoutMs = 2500 } = {}) {
+  try {
+    const ctrl = ("AbortController" in window) ? new AbortController() : null;
+    const t = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+
+    const res = await fetch(DEV_TEST_DEVICES_URL, {
+      cache: "no-store",
+      signal: ctrl ? ctrl.signal : undefined
+    });
+
+    if (t) clearTimeout(t);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const data = await res.json();
+    const arr = Array.isArray(data?.testDevices) ? data.testDevices : (Array.isArray(data) ? data : []);
+    const clean = arr.map(x => String(x || "").trim()).filter(Boolean);
+
+    localStorage.setItem(LS_TESTDEV_CACHE_KEY, JSON.stringify({ testDevices: clean }));
+    localStorage.setItem(LS_TESTDEV_CACHE_TS_KEY, new Date().toISOString());
+
+    DEV_TEST_DEVICE_IDS = new Set([...DEV_TEST_DEVICE_IDS_FALLBACK, ...clean]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isTestDevice(deviceId) {
+  const id = String(deviceId || "").trim();
+  return !!id && DEV_TEST_DEVICE_IDS.has(id);
+}
+
+// init : cache -> refresh async (sans bloquer l’app)
+loadCachedTestDevices();
+setTimeout(() => { refreshTestDevicesFromUrl().then(() => {
+  try { window.__bfmRefreshLicenseUI && window.__bfmRefreshLicenseUI(); } catch {}
+}); }, 0);
+
+const LS_DEVICE_ID_KEY = "bfm_device_id_v1";
+
   const LS_LICENSE_KEY = "bfm_license_v1";
 
   function genUUIDv4() {
@@ -385,7 +449,7 @@
     let lic = loadLicense();
 
     // MODE TEST auto sur device whitelist
-    if (DEV_TEST_DEVICE_IDS.has(deviceId)) {
+    if (isTestDevice(deviceId)) {
       if (!lic || lic.status !== "TEST") {
         lic = { status: "TEST", note: "Device whitelisted", createdAt: nowISO() };
         saveLicense(lic);
@@ -836,6 +900,28 @@ const pS = safeText(state.config.produitS) || "produit";
       const lic = ensureLicense();
       if ($("license-status")) $("license-status").textContent = licenseStatusLabel(lic);
 
+// Permet au loader whitelist (test-devices.json) de rafraîchir l'UI sans recharger la page
+window.__bfmRefreshLicenseUI = function() {
+  try {
+    const deviceIdNow = getDeviceId();
+    const licNow = ensureLicense();
+    if ($("license-status")) $("license-status").textContent = licenseStatusLabel(licNow);
+
+    // Test button visibility
+    if ($("btn-toggle-test")) {
+      if (isTestDevice(deviceIdNow)) {
+        $("btn-toggle-test").style.display = "inline-flex";
+        // si licence actuelle est TEST, afficher ON, sinon OFF
+        const cur = loadLicense();
+        $("btn-toggle-test").textContent = (cur && cur.status === "TEST") ? "🧪 TEST (ON)" : "🧪 TEST (OFF)";
+      } else {
+        $("btn-toggle-test").style.display = "none";
+      }
+    }
+    updateAppLocks();
+  } catch {}
+};
+
       on($("btn-copy-device-id"), "click", async () => {
         const val = deviceId;
         try {
@@ -857,7 +943,7 @@ const pS = safeText(state.config.produitS) || "produit";
       });
 
       // Bouton TEST visible seulement si device whitelisted
-      if (DEV_TEST_DEVICE_IDS.has(deviceId) && $("btn-toggle-test")) {
+      if (isTestDevice(deviceId) && $("btn-toggle-test")) {
         $("btn-toggle-test").style.display = "inline-flex";
         $("btn-toggle-test").textContent = "🧪 TEST (ON)";
         on($("btn-toggle-test"), "click", () => {
