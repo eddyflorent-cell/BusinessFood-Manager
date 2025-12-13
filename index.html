@@ -565,12 +565,14 @@
 
 <!-- ======================= PAGE : TUTORIEL ======================= -->
 <section id="page-tutoriel" class="page hidden">
-  <h1>Tutoriel – BusinessFood Manager (version V6)</h1>
+  <h1>Tutoriel – BusinessFood Manager (version actuelle)</h1>
 
   <p class="tuto-intro">
     Cette version gère <strong>plusieurs profils</strong> (configurations complètes), une <strong>devise par profil</strong>,
-    des <strong>recettes</strong> qui peuvent <strong>déduire le stock xN</strong>, des <strong>packs modifiables</strong>,
-    et des ventes avec contrôle de disponibilité.
+    des <strong>recettes</strong> (avec option <strong>déduire le stock xN</strong>), des <strong>packs modifiables</strong>,
+    et des ventes avec contrôle de disponibilité.<br><br>
+    <strong>Important :</strong> au premier démarrage, l’application peut afficher un <strong>assistant de démarrage</strong>
+    et verrouiller certaines rubriques tant que le minimum n’est pas prêt (profil + devise + au moins 1 recette).
     <br><br>
     Flux conseillé : <strong>Config/Profil → Ingrédients → Recettes (production) → Packs → Ventes → Dashboard/Historique → Exports</strong>.
   </p>
@@ -591,9 +593,7 @@
           </ul>
         </li>
       </ul>
-      <p class="tuto-note">
-        ➜ Ici, l’app <strong>ne te sort plus</strong> de la page Config : tu peux enchaîner config + profil sans aller-retour.
-      </p>
+      <p class="tuto-note">➜ L’app ne te sort plus de la page Config : tu peux enchaîner sans aller-retour.</p>
     </div>
 
     <!-- 1) Devise -->
@@ -605,9 +605,7 @@
         <li>Optionnel : masque/affiche la devise à l’écran (si tu veux juste des chiffres).</li>
         <li>Enregistre : tous les montants (packs, ventes, dépenses, exports) suivent la devise du profil actif.</li>
       </ol>
-      <p class="tuto-note">
-        ➜ Astuce : 1 profil “Douala (XAF)” + 1 profil “Paris (EUR)” = tu ne mélanges jamais les chiffres.
-      </p>
+      <p class="tuto-note">➜ Astuce : 1 profil “Douala (XAF)” + 1 profil “Paris (EUR)” = aucun mélange.</p>
     </div>
 
     <!-- 2) Ingrédients -->
@@ -628,12 +626,10 @@
       <ol>
         <li>Donne un <strong>nom</strong> à la recette.</li>
         <li>Indique le <strong>nombre de produits finis</strong> générés (ex : 30 pièces).</li>
-        <li>Indique le <strong>prix de vente unitaire</strong> (utile pour la marge).</li>
+        <li>Indique le <strong>prix de vente unitaire</strong> (utile pour la marge et les ventes à l’unité).</li>
         <li>Ajoute les ingrédients (quantité + unité) puis enregistre.</li>
       </ol>
-      <p class="tuto-note">
-        ➜ Une recette sert aussi de “produit fini” pour les packs et les ventes.
-      </p>
+      <p class="tuto-note">➜ Une recette sert aussi de “produit fini” pour les packs et les ventes.</p>
     </div>
 
     <!-- 4) Production / déduction stock xN -->
@@ -649,7 +645,7 @@
             <li>✅ produits finis ajoutés ×N</li>
           </ul>
         </li>
-        <li>Si désactivé : la recette est enregistrée, mais <strong>sans impacter</strong> le stock (utile pour préparer/simuler).</li>
+        <li>Si désactivé : la recette est enregistrée sans impacter le stock (utile pour préparer/simuler).</li>
       </ul>
     </div>
 
@@ -666,13 +662,13 @@
 
     <!-- 6) Packs -->
     <div class="tuto-step">
-      <h3>6) Packs : créer, marge, suggestion, modification</h3>
+      <h3>6) Packs : créer, suggestion, modifier</h3>
       <p><strong>Menu : Packs</strong></p>
       <ol>
         <li>Donne un <strong>nom de pack</strong>.</li>
         <li>Ajoute des lignes : <strong>Recette</strong> + <strong>Quantité</strong>.</li>
         <li>Le <strong>coût total</strong> se calcule automatiquement.</li>
-        <li>Renseigne la <strong>marge souhaitée (%)</strong> : la <strong>Suggestion</strong> de prix se met à jour en direct (marge sans limite).</li>
+        <li>Renseigne la <strong>marge souhaitée (%)</strong> : la <strong>suggestion</strong> se met à jour en direct (marge sans limite).</li>
         <li>Saisis le prix du pack (ou utilise la suggestion), puis <strong>Créer le pack</strong>.</li>
       </ol>
       <p class="tuto-note">
@@ -688,18 +684,10 @@
       <ol>
         <li>Renseigne date/heure + vendeur + lieu.</li>
         <li>Ajoute des <strong>packs</strong> (quantité). Le stock est contrôlé automatiquement.</li>
-        <li>Pour vendre <strong>hors pack</strong> :
-          <ul>
-            <li>Ajoute une ligne <strong>Recette → Quantité → Prix</strong></li>
-            <li>Le prix peut être pré-rempli depuis le prix unitaire de la recette</li>
-            <li>Tu peux ajouter plusieurs recettes dans la même vente</li>
-          </ul>
-        </li>
+        <li>Vente <strong>hors pack</strong> : choisis la <strong>recette</strong> vendue, la quantité, et le prix unitaire.</li>
         <li>Enregistre la vente : l’app déduit le stock des recettes concernées.</li>
       </ol>
-      <p class="tuto-note">
-        ➜ Si un pack/produit fini n’est plus disponible, la vente est bloquée avec une alerte claire.
-      </p>
+      <p class="tuto-note">➜ Si un pack/produit fini n’est plus disponible, la vente est bloquée avec une alerte claire.</p>
     </div>
 
     <!-- 8) Dépenses -->
@@ -721,20 +709,33 @@
         <li><strong>Exporter CSV</strong> : parfait pour Excel (analyse, compta).</li>
         <li><strong>Partager WhatsApp</strong> : envoi rapide des résumés.</li>
       </ul>
-      <p class="tuto-note">
-        ➜ Bon réflexe : export CSV/PDF régulièrement (clé USB / mail / WhatsApp) pour éviter les pertes.
-      </p>
+      <p class="tuto-note">➜ Bon réflexe : exporter régulièrement (clé USB / mail / WhatsApp) pour éviter les pertes.</p>
     </div>
 
-    <!-- 10) Export/import profils -->
+    <!-- 10) Sauvegarde / export / import -->
     <div class="tuto-step">
       <h3>10) Sauvegarder / Exporter / Importer tes données</h3>
       <p><strong>Menu : Config → Gestion des données</strong></p>
       <ul>
         <li><strong>Sauvegarder maintenant</strong> : point de contrôle manuel (en plus de l’auto-save).</li>
         <li><strong>Export profil</strong> : télécharge un fichier JSON du profil actif.</li>
-        <li><strong>Import profil</strong> : charge un JSON pour restaurer/créer un profil.</li>
+        <li><strong>Import profil</strong> : restaure/crée un profil depuis un JSON.</li>
         <li><strong>Export/Import TOUT</strong> : migration complète (tous les profils) si tu changes d’appareil.</li>
+      </ul>
+    </div>
+
+    <!-- 11) Abonnement / mode lecture / mode TEST -->
+    <div class="tuto-step">
+      <h3>11) Abonnement, grâce (14 jours) et mode TEST</h3>
+      <p><strong>Menu : Config → Gestion des données</strong></p>
+      <ul>
+        <li><strong>Identifiant appareil (support)</strong> : sert à l’activation et au support.</li>
+        <li><strong>Code d’activation</strong> : saisis le code fourni, puis clique <strong>Activer</strong>.</li>
+        <li>Si l’abonnement est expiré : l’app passe en <strong>mode lecture</strong> (consultation + exports OK, ajout/modification bloqués).</li>
+        <li><strong>Grâce après expiration : 14 jours</strong> (si besoin de temps pour renouveler).</li>
+        <li><strong>Mode TEST</strong> (développement/démo) : disponible uniquement sur les appareils autorisés.<br>
+            ⚠️ Le mode TEST n’est pas destiné à la production.
+        </li>
       </ul>
     </div>
 
@@ -749,12 +750,156 @@
 
 
 
+
+
+<!-- ======================= PAGE : MENTIONS LÉGALES ======================= -->
+<section id="page-mentions" class="page hidden">
+  <div class="card">
+    <h1>Mentions légales</h1>
+
+    <h2>Nom commercial</h2>
+    <p><strong>BusinessFood Manager</strong></p>
+
+    <h2>Éditeur</h2>
+    <p>
+      <strong>Fotsi Global Services</strong> / Takougang Eddy<br>
+      RCCM : <strong>CM-DLA-01-2025 A-10-01506</strong><br>
+      Adresse : <strong>Akwa, Douala</strong><br>
+      Contact : <strong>Eddy Takougang</strong><br>
+      WhatsApp : <strong>+33 6 29 85 02 14</strong><br>
+      Email : <strong>eddy.takougang@gmail.com</strong>
+    </p>
+
+    <h2>Support</h2>
+    <p>
+      Email : <strong>fotsiglobalservices@gmail.com</strong><br>
+      WhatsApp : <strong>+237 6 91 83 72 74</strong><br>
+      Horaires / délais : <strong>24–72h ouvrées</strong>
+    </p>
+
+    <h2>Hébergement / serveurs</h2>
+    <p>
+      Par défaut, l’application fonctionne <strong>hors ligne</strong> : les données sont stockées <strong>localement</strong>
+      sur l’appareil (stockage navigateur / application). Aucun serveur n’est requis pour l’usage standard.
+    </p>
+
+    <h2>Propriété intellectuelle</h2>
+    <p>
+      L’application, son interface, ses textes et son code sont protégés. Toute reproduction, diffusion, revente,
+      extraction ou modification non autorisée est interdite.
+    </p>
+
+    <h2>Version</h2>
+    <p>Version : <strong>v6.9.2</strong> — Dernière mise à jour : <strong>13/12/2025</strong></p>
+  </div>
+</section>
+
+<!-- ======================= PAGE : CONFIDENTIALITÉ ======================= -->
+<section id="page-confidentialite" class="page hidden">
+  <div class="card">
+    <h1>Politique de confidentialité</h1>
+
+    <h2>Données traitées</h2>
+    <p>
+      BusinessFood Manager enregistre des données de gestion : profils, configuration, ingrédients, recettes, packs,
+      ventes, dépenses, historiques, et éventuellement des informations de vendeur (nom/pseudo), lieu et notes.
+    </p>
+
+    <h2>Stockage</h2>
+    <p>
+      Les données sont stockées <strong>localement sur l’appareil</strong> (stockage du navigateur / application).
+      Par défaut, l’application <strong>ne transmet aucune donnée</strong> à un serveur.
+    </p>
+
+    <h2>Exports / partages</h2>
+    <p>
+      Les exports (PDF/CSV/JSON) sont générés <strong>à la demande</strong>. Si vous partagez un export (WhatsApp, email,
+      clé USB), cela relève de votre choix.
+    </p>
+
+    <h2>Conservation & suppression</h2>
+    <p>
+      Les données restent disponibles tant que vous conservez vos profils sur l’appareil. Vous pouvez supprimer un profil
+      (ou remplacer vos données via import) à tout moment.
+    </p>
+
+    <h2>Bonnes pratiques</h2>
+    <ul>
+      <li>Protégez l’appareil (verrouillage / code) et limitez les accès.</li>
+      <li>Faites des <strong>exports réguliers</strong> (JSON/CSV/PDF) pour sauvegarde.</li>
+      <li>En cas de changement d’appareil, utilisez <strong>Export TOUT</strong> puis <strong>Import TOUT</strong>.</li>
+    </ul>
+
+    <p class="small">
+      Note : cette page décrit le fonctionnement actuel de l’app (usage local, sans synchronisation cloud).
+    </p>
+  </div>
+</section>
+
+<!-- ======================= PAGE : CONDITIONS D’UTILISATION ======================= -->
+<section id="page-cgu" class="page hidden">
+  <div class="card">
+    <h1>Conditions d’utilisation (CGU) & Licence</h1>
+
+    <h2>Objet</h2>
+    <p>
+      BusinessFood Manager est un <strong>outil de gestion</strong> (stock, recettes, packs, ventes, dépenses, marges,
+      exports). Il n’est pas présenté comme un logiciel de caisse certifié.
+    </p>
+
+    <h2>Licence</h2>
+    <ul>
+      <li>Licence d’utilisation <strong>non exclusive</strong>, <strong>non transférable</strong>, liée à un appareil.</li>
+      <li>Interdiction de copier, revendre, décompiler ou distribuer l’application sans autorisation écrite.</li>
+    </ul>
+
+    <h2>Abonnement & accès</h2>
+    <p>
+      L’accès peut être soumis à un abonnement. En cas d’expiration, l’application peut basculer en <strong>mode lecture</strong>
+      (consultation + exports possibles ; ajout/modification bloqués). Une <strong>grâce</strong> peut s’appliquer après expiration.
+    </p>
+
+    <h2>Mode hors ligne</h2>
+    <p>
+      L’application fonctionne hors ligne. Certaines fonctions (activation/renouvellement) peuvent nécessiter une connexion
+      selon la méthode de distribution.
+    </p>
+
+    <h2>Sauvegarde & responsabilité</h2>
+    <p>
+      Les données étant stockées localement, l’utilisateur est responsable de ses sauvegardes (exports). L’éditeur ne peut être tenu
+      responsable d’une perte de données due à l’appareil (panne, vol, suppression navigateur) en l’absence de sauvegarde.
+    </p>
+
+    <h2>Support</h2>
+    <p>
+      Support : <strong>fotsiglobalservices@gmail.com</strong> / WhatsApp <strong>+237 6 91 83 72 74</strong> — délai : <strong>24–72h ouvrées</strong>.
+    </p>
+
+    <h2>Droit applicable</h2>
+    <p>
+      Sauf disposition contraire, le droit applicable et la juridiction compétente sont ceux du lieu d’établissement de l’éditeur,
+      après tentative de résolution amiable.
+    </p>
+  </div>
+</section>
+
+
 <footer class="app-footer">
-    BusinessFood Manager – © 2025 Takougang Eddy • Fotsi Global Services
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
+      <div>
+        BusinessFood Manager – © 2025 Takougang Eddy • Fotsi Global Services
+        <span class="small" style="opacity:.8;">• v6.9.2</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" type="button" onclick="showPage('mentions')">Mentions légales</button>
+        <button class="btn btn-secondary" type="button" onclick="showPage('confidentialite')">Confidentialité</button>
+        <button class="btn btn-secondary" type="button" onclick="showPage('cgu')">Conditions</button>
+      </div>
+    </div>
 </footer>
 
 <!-- ======================= SCRIPTS ======================= -->
 <script src="app.js"></script>
 </body>
 </html>
-
