@@ -176,126 +176,6 @@
 
   const PROFILES_KEY = "BFM_PROFILES_V1";
 
-  // =========================
-  // Storage resilience (backup IndexedDB + détection navigateur "privacy")
-  // =========================
-  const STORAGE_TEST_KEY = "__BFM_STORAGE_TEST__";
-  let storageIsUnstable = false;
-
-  function detectStorageUnstable() {
-    try {
-      localStorage.setItem(STORAGE_TEST_KEY, "1");
-      const ok = localStorage.getItem(STORAGE_TEST_KEY) === "1";
-      localStorage.removeItem(STORAGE_TEST_KEY);
-      storageIsUnstable = !ok;
-    } catch (e) {
-      storageIsUnstable = true;
-    }
-    return storageIsUnstable;
-  }
-
-  // IndexedDB backup (plus robuste que localStorage sur certains navigateurs)
-  const IDB_DB_NAME = "BFM_DB_V1";
-  const IDB_STORE = "snapshots";
-  let _idbPromise = null;
-
-  function idbOpen() {
-    if (_idbPromise) return _idbPromise;
-    _idbPromise = new Promise((resolve, reject) => {
-      try {
-        const req = indexedDB.open(IDB_DB_NAME, 1);
-        req.onupgradeneeded = () => {
-          const db = req.result;
-          if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      } catch (e) { reject(e); }
-    });
-    return _idbPromise;
-  }
-
-  async function idbSet(key, value) {
-    try {
-      const db = await idbOpen();
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, "readwrite");
-        tx.objectStore(IDB_STORE).put(value, key);
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => reject(tx.error);
-      });
-    } catch (e) {
-      console.warn("BFM: idbSet failed", e);
-    }
-  }
-
-  async function idbGet(key) {
-    try {
-      const db = await idbOpen();
-      return await new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, "readonly");
-        const req = tx.objectStore(IDB_STORE).get(key);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    } catch (e) {
-      console.warn("BFM: idbGet failed", e);
-      return null;
-    }
-  }
-
-  function safeLocalGet(key) {
-    try { return localStorage.getItem(key); } catch { return null; }
-  }
-  function safeLocalSet(key, val) {
-    try { localStorage.setItem(key, val); return true; } catch { return false; }
-  }
-
-  async function backupProfilesIndexToIDB() {
-    try {
-      const raw = safeLocalGet(PROFILES_KEY);
-      if (raw) await idbSet("profilesIndex", raw);
-    } catch (e) { console.warn("BFM: backupProfilesIndexToIDB", e); }
-  }
-
-  async function backupStateToIDB(storeKey) {
-    try {
-      const raw = safeLocalGet(storeKey);
-      if (raw) await idbSet("state:" + storeKey, raw);
-    } catch (e) { console.warn("BFM: backupStateToIDB", e); }
-  }
-
-  // Tentative de restauration si le navigateur efface localStorage (DuckDuckGo / privacy)
-  async function restoreFromIDBIfMissing() {
-    detectStorageUnstable();
-
-    let restoredIndex = false;
-    let restoredState = false;
-
-    // 1) index profils
-    if (!safeLocalGet(PROFILES_KEY)) {
-      const idx = await idbGet("profilesIndex");
-      if (typeof idx === "string" && idx.trim()) {
-        safeLocalSet(PROFILES_KEY, idx);
-        restoredIndex = true;
-      }
-    }
-
-    // 2) état du profil courant
-    const currentKey = getActiveStoreKey();
-    if (!safeLocalGet(currentKey)) {
-      const raw = await idbGet("state:" + currentKey);
-      if (typeof raw === "string" && raw.trim()) {
-        safeLocalSet(currentKey, raw);
-        restoredState = true;
-      }
-    }
-
-    return { restoredIndex, restoredState, unstable: storageIsUnstable };
-  }
-
-
-
     function nowISO() { return new Date().toISOString(); }
 
     function loadProfilesIndex() {
@@ -325,8 +205,6 @@
     function saveProfilesIndex() {
       try { localStorage.setItem(PROFILES_KEY, JSON.stringify(profilesIndex)); }
       catch (e) { console.warn("BFM: saveProfilesIndex error", e); }
-    
-      backupProfilesIndexToIDB();
     }
 
     function profileStoreKey(id) {
@@ -643,7 +521,15 @@
     if ($("cfg-currency-preview")) $("cfg-currency-preview").textContent = `Aperçu : ${out}`;
   }
 function applyConfigLabels() {
-    const pS = safeText(state.config.produitS) || "produit";
+    
+    // --- Branding navbar + titre page ---
+    const brand = safeText(state?.config?.exemple || "");
+    const appTitleEl = document.querySelector(".app-title");
+    const baseTitle = "BusinessFood Manager";
+    const fullTitle = brand ? `${brand} — ${baseTitle}` : baseTitle;
+    if (appTitleEl) appTitleEl.textContent = fullTitle;
+    document.title = fullTitle;
+const pS = safeText(state.config.produitS) || "produit";
     const pP = safeText(state.config.produitP) || "produits";
 
     if ($("label-dashboard-total")) $("label-dashboard-total").textContent = `Total ${pP} vendus`;
@@ -911,25 +797,10 @@ function applyConfigLabels() {
       toast("Export TOUT OK ✅");
     }
 
-    function parseJsonLenient(txt) {
-      let s = String(txt || "");
-      // strip UTF-8 BOM
-      if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1);
-      s = s.trim();
-      try { return JSON.parse(s); }
-      catch (e1) {
-        try {
-          // fix trailing commas
-          const s2 = s.replace(/,\s*([}\]])/g, "$1");
-          return JSON.parse(s2);
-        } catch (e2) { throw e1; }
-      }
-    }
-
     function readJsonFile(file, cb) {
       const reader = new FileReader();
       reader.onload = () => {
-        try { cb(parseJsonLenient(String(reader.result || "{}"))); }
+        try { cb(JSON.parse(String(reader.result || "{}"))); }
         catch { toast("Fichier JSON invalide."); }
       };
       reader.readAsText(file);
@@ -2956,12 +2827,7 @@ function saleUnitsFromPacks() {
     renderVendors();
   }
 
-  async function boot() {
-    const restore = await restoreFromIDBIfMissing();
-    if (restore.restoredIndex || restore.restoredState) {
-      profilesIndex = loadProfilesIndex();
-      state = loadState();
-    }
+  function boot() {
     initDefaults();
     wireEvents();
 
@@ -2977,13 +2843,6 @@ function saleUnitsFromPacks() {
     renderExpenses();
     renderDashboard();
     renderHistorique();
-
-    // Alerte stockage instable
-    if (restore.unstable) {
-      const w = $("storage-warning");
-      if (w) w.style.display = "block";
-      try { toast("⚠️ Attention : ce navigateur peut effacer les données. Utilise Export TOUT régulièrement."); } catch {}
-    }
 
     // Page d'accueil par défaut
     showPage("home");
