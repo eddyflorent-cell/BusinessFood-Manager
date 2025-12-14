@@ -377,8 +377,23 @@ async function refreshTestDevicesFromUrl({ timeoutMs = 2500 } = {}) {
     if (t) clearTimeout(t);
     if (!res.ok) throw new Error("HTTP " + res.status);
 
-    const data = await res.json();
-    const arr = Array.isArray(data?.testDevices) ? data.testDevices : (Array.isArray(data) ? data : []);
+    // On lit en texte pour être robuste (ex: virgule finale accidentelle dans le JSON)
+    const rawText = await res.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e1) {
+      // tentative de réparation: supprimer les virgules finales avant } ou ]
+      const sanitized = rawText.replace(/,\s*([}\]])/g, "$1");
+      data = JSON.parse(sanitized);
+    }
+
+    const arr =
+      Array.isArray(data?.testDevices) ? data.testDevices :
+      Array.isArray(data?.testDeviceIds) ? data.testDeviceIds :
+      Array.isArray(data?.devices) ? data.devices :
+      (Array.isArray(data) ? data : []);
+
     const clean = arr.map(x => String(x || "").trim()).filter(Boolean);
 
     localStorage.setItem(LS_TESTDEV_CACHE_KEY, JSON.stringify({ testDevices: clean }));
@@ -386,7 +401,8 @@ async function refreshTestDevicesFromUrl({ timeoutMs = 2500 } = {}) {
 
     DEV_TEST_DEVICE_IDS = new Set([...DEV_TEST_DEVICE_IDS_FALLBACK, ...clean]);
     return true;
-  } catch {
+  } catch (e) {
+    console.warn(\"BFM: test-devices.json non chargé (offline / invalide / inaccessible)\", e);
     return false;
   }
 }
@@ -401,6 +417,25 @@ loadCachedTestDevices();
 setTimeout(() => { refreshTestDevicesFromUrl().then(() => {
   try { window.__bfmRefreshLicenseUI && window.__bfmRefreshLicenseUI(); } catch {}
 }); }, 0);
+
+// Hotfix responsive Dashboard (certaines feuilles CSS ont des règles qui s'annulent)
+// -> Force 1 colonne sur mobile + évite les titres coupés.
+(function ensureDashboardMobileFix(){
+  try {
+    const id = "bfm-dashboard-mobile-fix";
+    if (document.getElementById(id)) return;
+    const st = document.createElement("style");
+    st.id = id;
+    st.textContent = `
+      @media (max-width: 520px){
+        .dashboard-grid{ grid-template-columns: 1fr !important; }
+        .dash-card.big{ grid-column: span 1 !important; }
+        .dash-card h3{ word-break: break-word; hyphens: auto; }
+      }
+    `;
+    document.head.appendChild(st);
+  } catch {}
+})();
 
 const LS_DEVICE_ID_KEY = "bfm_device_id_v1";
 
