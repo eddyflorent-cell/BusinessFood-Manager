@@ -402,7 +402,7 @@ async function refreshTestDevicesFromUrl({ timeoutMs = 2500 } = {}) {
     DEV_TEST_DEVICE_IDS = new Set([...DEV_TEST_DEVICE_IDS_FALLBACK, ...clean]);
     return true;
   } catch (e) {
-    console.warn(\"BFM: test-devices.json non chargé (offline / invalide / inaccessible)\", e);
+    console.warn("BFM: test-devices.json non chargé (offline / invalide / inaccessible)", e);
     return false;
   }
 }
