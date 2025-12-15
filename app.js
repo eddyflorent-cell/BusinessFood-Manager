@@ -12,7 +12,7 @@
   ========================== */
   const $ = (id) => document.getElementById(id);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-  const on = (el, evt, fn, opts) => { if (!el) return; const id = el.id || ""; const needsWrite = (evt === "click") && ["btn-add-ingredient","btn-save-recipe","btn-add-pack","btn-save-sale","btn-add-expense","btn-add-vendeur"].includes(id); const wrapped = (e) => { if (needsWrite && !requireWriteAccess()) return; return fn(e); }; el.addEventListener(evt, wrapped, opts); };
+  const on = (el, evt, fn, opts) => { if (el) el.addEventListener(evt, fn, opts); };
 
   const uid = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
   const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
@@ -22,87 +22,10 @@
   };
   const pad2 = (n) => String(n).padStart(2, "0");
 
-  // =========================
-  // Devise / format monétaire (par profil)
-  // =========================
-  const _trim = (v) => String(v ?? "").trim();
-
-  const currencyLabel = () => {
-    try {
-      const sym = _trim(state?.config?.currencySymbol);
-      return sym || "FCFA";
-    } catch {
-      return "FCFA";
-    }
-  };
-
-  const getCurrencyCfg = () => {
-    try {
-      const cfg = state?.config || {};
-      const symbol = _trim(cfg.currencySymbol) || "FCFA";
-      const locale = _trim(cfg.currencyLocale) || "fr-FR";
-      let decimals = Number(cfg.currencyDecimals);
-      decimals = Number.isFinite(decimals) ? Math.max(0, Math.min(6, Math.floor(decimals))) : 0;
-      const position = cfg.currencyPosition === "prefix" ? "prefix" : "suffix";
-      const space = (cfg.currencySpace === false) ? "" : " ";
-      return { symbol, locale, decimals, position, space };
-    } catch {
-      return { symbol: "FCFA", locale: "fr-FR", decimals: 0, position: "suffix", space: " " };
-    }
-  };
-
-  const formatNumber = (n, locale, decimals) => {
-    const v = toNum(n, 0);
-    try {
-      return new Intl.NumberFormat(locale || undefined, {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
-      }).format(v);
-    } catch {
-      // fallback simple
-      const pow = Math.pow(10, decimals);
-      return String(Math.round(v * pow) / pow);
-    }
-  };
-
   const money = (n) => {
-    const { symbol, locale, decimals, position, space } = getCurrencyCfg();
-    const num = formatNumber(n, locale, decimals);
-    if (!symbol) return num;
-    return position === "prefix" ? `${symbol}${space}${num}` : `${num}${space}${symbol}`;
+    const v = Math.round(toNum(n, 0));
+    try { return v.toLocaleString("fr-FR") + " FCFA"; } catch { return `${v} FCFA`; }
   };
-
-  // Pour rendre l'UI "universelle" sans modifier le HTML:
-  // on remplace les libellés (FCFA) en gardant une copie de l'original (permet de changer plusieurs fois).
-  const _currencyTextCache = new WeakMap();
-
-  function applyCurrencyUITexts(scope = document) {
-    const sym = currencyLabel();
-
-    // 1) Text nodes
-    try {
-      const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
-      while (walker.nextNode()) {
-        const node = walker.currentNode;
-        const orig = _currencyTextCache.get(node) ?? node.nodeValue;
-        if (!_currencyTextCache.has(node)) _currencyTextCache.set(node, orig);
-
-        if (orig && orig.includes("FCFA")) {
-          node.nodeValue = orig.split("FCFA").join(sym);
-        }
-      }
-    } catch {}
-
-    // 2) Placeholders
-    try {
-      scope.querySelectorAll?.('[placeholder*="FCFA"]').forEach((el) => {
-        if (!el.dataset) return;
-        if (!el.dataset.origPlaceholder) el.dataset.origPlaceholder = el.placeholder;
-        el.placeholder = (el.dataset.origPlaceholder || "").split("FCFA").join(sym);
-      });
-    } catch {}
-  }
-
 
   const dateISO = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const timeISO = (d = new Date()) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -273,13 +196,7 @@
       activite: "",
       produitS: "produit",
       produitP: "produits",
-      exemple: "",
-      // Devise (par profil)
-      currencySymbol: "FCFA",      // affichage: "FCFA", "€", "$", etc.
-      currencyLocale: "fr-FR",     // format des nombres
-      currencyDecimals: 0,         // 0 pour FCFA, 2 pour EUR/USD…
-      currencyPosition: "suffix",  // "suffix" ou "prefix"
-      currencySpace: true          // espace entre nombre et symbole
+      exemple: ""
     },
     ingredients: [], // {id,name,priceTotal,baseQtyTotal,baseQtyRemaining,baseUnit,displayUnit,alertBaseQty}
     recipes: [],     // production batches
@@ -323,238 +240,7 @@
 
   let state = loadState();
 
-  
-
-  /* =========================
-     Device ID + Licence (abonnement) — offline-first
-     - 1 appareil = 1 licence
-     - Grâce après expiration : 14 jours
-     - Mode TEST : uniquement sur appareils autorisés (whitelist)
-  ========================== */
-  const LICENSE_GRACE_DAYS = 14;
-
-  // ⚠️ MODE TEST — Whitelist externe (GitHub Pages friendly)
-// Objectif : ne plus modifier app.js à chaque fois qu’un nouvel appareil de test apparaît.
-// - L’app tente de charger ./test-devices.json (même dossier que le HTML/app.js)
-// - Si offline / erreur : elle utilise le cache local (si déjà récupéré) + une liste "secours".
-const DEV_TEST_DEVICES_URL = "./test-devices.json";
-const LS_TESTDEV_CACHE_KEY = "bfm_test_devices_cache_v1";
-const LS_TESTDEV_CACHE_TS_KEY = "bfm_test_devices_cache_ts_v1";
-
-// Liste "secours" (au cas où le JSON n’est pas dispo). Tu peux la laisser (ou la vider).
-const DEV_TEST_DEVICE_IDS_FALLBACK = new Set([
-  "8e4718f6-a4b0-4348-99a0-01da86b7915a",
-  "6e532737-6930-46f0-ad7c-02e516e528a3",
-  "091d7fb2-49a1-4b41-b109-38d48eccb2e4"
-]);
-
-// Whitelist effective (fallback + cache + fetch)
-let DEV_TEST_DEVICE_IDS = new Set([...DEV_TEST_DEVICE_IDS_FALLBACK]);
-
-function loadCachedTestDevices() {
-  try {
-    const raw = localStorage.getItem(LS_TESTDEV_CACHE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    const arr = Array.isArray(data?.testDevices) ? data.testDevices : (Array.isArray(data) ? data : []);
-    DEV_TEST_DEVICE_IDS = new Set([
-      ...DEV_TEST_DEVICE_IDS_FALLBACK,
-      ...arr.map(x => String(x || "").trim()).filter(Boolean)
-    ]);
-  } catch {}
-}
-
-async function refreshTestDevicesFromUrl({ timeoutMs = 2500 } = {}) {
-  try {
-    const ctrl = ("AbortController" in window) ? new AbortController() : null;
-    const t = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
-
-    const res = await fetch(DEV_TEST_DEVICES_URL, {
-      cache: "no-store",
-      signal: ctrl ? ctrl.signal : undefined
-    });
-
-    if (t) clearTimeout(t);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-
-    // On lit en texte pour être robuste (ex: virgule finale accidentelle dans le JSON)
-    const rawText = await res.text();
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (e1) {
-      // tentative de réparation: supprimer les virgules finales avant } ou ]
-      const sanitized = rawText.replace(/,\s*([}\]])/g, "$1");
-      data = JSON.parse(sanitized);
-    }
-
-    const arr =
-      Array.isArray(data?.testDevices) ? data.testDevices :
-      Array.isArray(data?.testDeviceIds) ? data.testDeviceIds :
-      Array.isArray(data?.devices) ? data.devices :
-      (Array.isArray(data) ? data : []);
-
-    const clean = arr.map(x => String(x || "").trim()).filter(Boolean);
-
-    localStorage.setItem(LS_TESTDEV_CACHE_KEY, JSON.stringify({ testDevices: clean }));
-    localStorage.setItem(LS_TESTDEV_CACHE_TS_KEY, new Date().toISOString());
-
-    DEV_TEST_DEVICE_IDS = new Set([...DEV_TEST_DEVICE_IDS_FALLBACK, ...clean]);
-    return true;
-  } catch (e) {
-    console.warn("BFM: test-devices.json non chargé (offline / invalide / inaccessible)", e);
-    return false;
-  }
-}
-
-function isTestDevice(deviceId) {
-  const id = String(deviceId || "").trim();
-  return !!id && DEV_TEST_DEVICE_IDS.has(id);
-}
-
-// init : cache -> refresh async (sans bloquer l’app)
-loadCachedTestDevices();
-setTimeout(() => { refreshTestDevicesFromUrl().then(() => {
-  try { window.__bfmRefreshLicenseUI && window.__bfmRefreshLicenseUI(); } catch {}
-}); }, 0);
-
-// Hotfix responsive Dashboard (certaines feuilles CSS ont des règles qui s'annulent)
-// -> Force 1 colonne sur mobile + évite les titres coupés.
-(function ensureDashboardMobileFix(){
-  try {
-    const id = "bfm-dashboard-mobile-fix";
-    if (document.getElementById(id)) return;
-    const st = document.createElement("style");
-    st.id = id;
-    st.textContent = `
-      @media (max-width: 520px){
-        .dashboard-grid{ grid-template-columns: 1fr !important; }
-        .dash-card.big{ grid-column: span 1 !important; }
-        .dash-card h3{ word-break: break-word; hyphens: auto; }
-      }
-    `;
-    document.head.appendChild(st);
-  } catch {}
-})();
-
-const LS_DEVICE_ID_KEY = "bfm_device_id_v1";
-
-  const LS_LICENSE_KEY = "bfm_license_v1";
-
-  function genUUIDv4() {
-    // crypto.randomUUID() si dispo, sinon fallback
-    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    const buf = new Uint8Array(16);
-    (window.crypto || { getRandomValues: (a) => a.map(() => Math.floor(Math.random()*256)) }).getRandomValues(buf);
-    buf[6] = (buf[6] & 0x0f) | 0x40;
-    buf[8] = (buf[8] & 0x3f) | 0x80;
-    const hex = [...buf].map(b => b.toString(16).padStart(2, "0")).join("");
-    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
-  }
-
-  function getDeviceId() {
-    let id = localStorage.getItem(LS_DEVICE_ID_KEY);
-    if (!id) {
-      id = genUUIDv4();
-      localStorage.setItem(LS_DEVICE_ID_KEY, id);
-    }
-    return id;
-  }
-
-  function loadLicense() {
-    try {
-      const raw = localStorage.getItem(LS_LICENSE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
-  }
-
-  function saveLicense(lic) {
-    try { localStorage.setItem(LS_LICENSE_KEY, JSON.stringify(lic || {})); } catch {}
-  }
-
-  function nowISO() { return new Date().toISOString(); }
-  function parseDate(d) { const x = new Date(d); return isNaN(+x) ? null : x; }
-  function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + days); return d; }
-
-  function ensureLicense() {
-    const deviceId = getDeviceId();
-    let lic = loadLicense();
-
-    // MODE TEST auto sur device whitelist
-    if (isTestDevice(deviceId)) {
-      if (!lic || lic.status !== "TEST") {
-        lic = { status: "TEST", note: "Device whitelisted", createdAt: nowISO() };
-        saveLicense(lic);
-      }
-      return lic;
-    }
-
-    if (!lic || !lic.status) {
-      // Par défaut : "ACTIVE" mais payé jusqu'à aujourd'hui => 14 jours de grâce pour régulariser.
-      lic = { status: "ACTIVE", paidUntil: nowISO(), createdAt: nowISO(), plan: "STANDARD" };
-      saveLicense(lic);
-    }
-    return lic;
-  }
-
-  function licenseStatusLabel(lic) {
-    if (!lic) return "Inconnu";
-    if (lic.status === "TEST") return "🧪 TEST (illimité)";
-    if (lic.status === "ACTIVE") {
-      const paidUntil = parseDate(lic.paidUntil);
-      if (!paidUntil) return "✅ Actif";
-      const graceEnd = addDays(paidUntil, LICENSE_GRACE_DAYS);
-      const now = new Date();
-      if (now <= paidUntil) return `✅ Actif (jusqu'au ${paidUntil.toLocaleDateString()})`;
-      if (now <= graceEnd) return `⏳ Grâce (jusqu'au ${graceEnd.toLocaleDateString()})`;
-      return `⛔ Expiré (depuis ${paidUntil.toLocaleDateString()})`;
-    }
-    if (lic.status === "EXPIRED") return "⛔ Expiré (lecture seule)";
-    return String(lic.status);
-  }
-
-  function canWrite() {
-    const lic = ensureLicense();
-    if (!lic) return true;
-    if (lic.status === "TEST") return true;
-    if (lic.status === "ACTIVE") {
-      const paidUntil = parseDate(lic.paidUntil);
-      if (!paidUntil) return true;
-      const graceEnd = addDays(paidUntil, LICENSE_GRACE_DAYS);
-      return new Date() <= graceEnd;
-    }
-    return false;
-  }
-
-  function requireWriteAccess(msg = "Abonnement expiré : mode lecture. Renouvelle pour continuer ✅") {
-    if (canWrite()) return true;
-    toast(msg);
-    return false;
-  }
-
-  // Activation simple par code (MVP) — à renforcer plus tard (serveur / signature)
-  // Format : BFM1-YYYYMMDD  (date de fin) ou BFM1-YYYYMMDD-PLAN
-  function activateWithCode(codeRaw) {
-    const code = String(codeRaw || "").trim().toUpperCase();
-    if (!code) return { ok: false, err: "Code vide" };
-    const m = code.match(/^BFM1-(\d{8})(?:-([A-Z0-9_]+))?$/);
-    if (!m) return { ok: false, err: "Format invalide (ex: BFM1-20260131)" };
-    const ymd = m[1];
-    const plan = m[2] || "STANDARD";
-    const yyyy = +ymd.slice(0,4), mm = +ymd.slice(4,6), dd = +ymd.slice(6,8);
-    const until = new Date(yyyy, mm-1, dd, 23, 59, 59);
-    if (isNaN(+until)) return { ok: false, err: "Date invalide" };
-
-    const lic = ensureLicense();
-    const newLic = { ...lic, status: "ACTIVE", paidUntil: until.toISOString(), plan, activatedAt: nowISO(), codeUsed: code };
-    saveLicense(newLic);
-    return { ok: true, lic: newLic };
-  }
-
-// Normalisation (compat anciens états)
+  // Normalisation (compat anciens états)
   (function normalizeState() {
     try {
       if (Array.isArray(state.recipes)) {
@@ -579,36 +265,7 @@ const LS_DEVICE_ID_KEY = "bfm_device_id_v1";
     if (tab) tab.classList.add("active");
   }
 
-  
-  function updateAppLocks() {
-    // Combine onboarding + licence : si licence expirée => blocage écriture
-    const writeOK = canWrite();
-
-    // Boutons d'actions (écriture)
-    const actionButtons = [
-      "btn-add-ingredient",
-      "btn-save-recipe",
-      "btn-add-pack",
-      "btn-save-sale",
-      "btn-add-expense",
-      "btn-add-vendeur",
-      "btn-profile-new",
-      "btn-profile-dup",
-      "btn-profile-rename",
-      "btn-profile-delete"
-    ];
-    actionButtons.forEach(id => {
-      const b = $(id);
-      if (!b) return;
-      // on laisse profil management possible même expiré ? -> ici on bloque seulement si tu veux. (On ne bloque PAS profil)
-      const lockProfile = false;
-      const shouldLock = (!writeOK) && !(id.startsWith("btn-profile") && !lockProfile);
-      b.disabled = shouldLock;
-      if (shouldLock) b.title = "Abonnement expiré : mode lecture";
-    });
-  }
-
-function showPage(pageName) {
+  function showPage(pageName) {
     document.body.dataset.page = pageName;
     hideAllPages();
     const page = $(`page-${pageName}`);
@@ -623,8 +280,8 @@ function showPage(pageName) {
     if (pageName === "depenses") renderExpenses();
     if (pageName === "dashboard") renderDashboard();
     if (pageName === "historique") renderHistorique();
-    if (pageName === "config") { renderConfig(); ensureCurrencyUI(); ensureDataManagerUI(); }
-    applyCurrencyUITexts(page || document);
+    if (pageName === "config") { renderConfig(); ensureDataManagerUI(); }
+    if (pageName === "abonnement") { ensureDataManagerUI(); }
   }
 
   // Expose pour les onclick du HTML
@@ -638,158 +295,10 @@ function showPage(pageName) {
     if ($("cfg-produit-s")) $("cfg-produit-s").value = state.config.produitS || "";
     if ($("cfg-produit-p")) $("cfg-produit-p").value = state.config.produitP || "";
     if ($("cfg-exemple")) $("cfg-exemple").value = state.config.exemple || "";
-
-    // devise (UI injectée)
-    if ($("cfg-currency-symbol")) $("cfg-currency-symbol").value = state.config.currencySymbol || "FCFA";
-    if ($("cfg-currency-locale")) $("cfg-currency-locale").value = state.config.currencyLocale || "fr-FR";
-    if ($("cfg-currency-decimals")) $("cfg-currency-decimals").value = String(toNum(state.config.currencyDecimals, 0));
-    if ($("cfg-currency-position")) $("cfg-currency-position").value = (state.config.currencyPosition === "prefix") ? "prefix" : "suffix";
-    if ($("cfg-currency-space")) $("cfg-currency-space").checked = (state.config.currencySpace !== false);
-
-    refreshCurrencyPreview?.();
   }
 
-  
-  // =========================
-  // 3bis) UI Devise (par profil) — injecté dans la page Config
-  // =========================
-  function ensureCurrencyUI() {
-    const page = $("page-config");
-    if (!page) return;
-
-    const card = page.querySelector(".card");
-    if (!card) return;
-
-    if ($("bfm-currency-block")) return;
-
-    const block = document.createElement("div");
-    block.id = "bfm-currency-block";
-    block.style.marginTop = "14px";
-    block.innerHTML = `
-      <hr style="margin:14px 0; opacity:.25" />
-      <h3 style="margin:8px 0 6px 0">Devise & format</h3>
-      <p style="margin:0 0 10px 0; opacity:.85">
-        La devise est <b>liée au profil actif</b>. Tu peux exporter/importer des profils avec leur devise.
-      </p>
-
-      <label>Préréglage :</label>
-      <select id="cfg-currency-preset">
-        <option value="XAF">FCFA (XAF)</option>
-        <option value="EUR">Euro (€)</option>
-        <option value="USD">Dollar ($)</option>
-        <option value="GBP">Livre (£)</option>
-        <option value="NGN">Naira (₦)</option>
-        <option value="CUSTOM">Autre…</option>
-      </select>
-
-      <label>Symbole affiché :</label>
-      <input type="text" id="cfg-currency-symbol" placeholder="Ex : FCFA, €, $" />
-
-      <label>Format des nombres :</label>
-      <select id="cfg-currency-locale">
-        <option value="fr-FR">fr-FR (1 234,56)</option>
-        <option value="en-US">en-US (1,234.56)</option>
-        <option value="en-GB">en-GB (1,234.56)</option>
-        <option value="fr-CM">fr-CM</option>
-      </select>
-
-      <label>Décimales :</label>
-      <input type="number" id="cfg-currency-decimals" min="0" max="6" step="1" />
-
-      <label>Position du symbole :</label>
-      <select id="cfg-currency-position">
-        <option value="suffix">Après le montant (123 FCFA)</option>
-        <option value="prefix">Avant le montant (FCFA 123)</option>
-      </select>
-
-      <label style="display:flex;gap:10px;align-items:center;margin-top:10px">
-        <input type="checkbox" id="cfg-currency-space" />
-        <span>Mettre un espace entre le nombre et le symbole</span>
-      </label>
-
-      <p id="cfg-currency-preview" style="margin:10px 0 0 0; font-weight:700"></p>
-    `;
-
-    const btn = $("btn-save-config");
-    if (btn && btn.parentElement === card) {
-      card.insertBefore(block, btn);
-    } else {
-      card.appendChild(block);
-    }
-
-    // wiring
-    const preset = $("cfg-currency-preset");
-    const sym = $("cfg-currency-symbol");
-    const loc = $("cfg-currency-locale");
-    const dec = $("cfg-currency-decimals");
-    const pos = $("cfg-currency-position");
-    const spc = $("cfg-currency-space");
-
-    // preset -> champs
-    function applyPreset(p) {
-      if (!p) return;
-      if (p === "XAF") { if (sym) sym.value = "FCFA"; if (loc) loc.value = "fr-FR"; if (dec) dec.value = "0"; if (pos) pos.value = "suffix"; if (spc) spc.checked = true; }
-      if (p === "EUR") { if (sym) sym.value = "€";    if (loc) loc.value = "fr-FR"; if (dec) dec.value = "2"; if (pos) pos.value = "suffix"; if (spc) spc.checked = true; }
-      if (p === "USD") { if (sym) sym.value = "$";    if (loc) loc.value = "en-US"; if (dec) dec.value = "2"; if (pos) pos.value = "prefix"; if (spc) spc.checked = true; }
-      if (p === "GBP") { if (sym) sym.value = "£";    if (loc) loc.value = "en-GB"; if (dec) dec.value = "2"; if (pos) pos.value = "prefix"; if (spc) spc.checked = true; }
-      if (p === "NGN") { if (sym) sym.value = "₦";    if (loc) loc.value = "en-US"; if (dec) dec.value = "0"; if (pos) pos.value = "prefix"; if (spc) spc.checked = true; }
-    }
-
-    on(preset, "change", () => {
-      if (preset.value !== "CUSTOM") applyPreset(preset.value);
-      refreshCurrencyPreview();
-    });
-
-    ["input", "change"].forEach(evt => {
-      on(sym, evt, refreshCurrencyPreview);
-      on(loc, evt, refreshCurrencyPreview);
-      on(dec, evt, refreshCurrencyPreview);
-      on(pos, evt, refreshCurrencyPreview);
-      on(spc, evt, refreshCurrencyPreview);
-    });
-
-    // init values from state
-    if (preset) {
-      const currentSym = safeText(state.config.currencySymbol) || "FCFA";
-      preset.value = (currentSym === "FCFA") ? "XAF"
-                   : (currentSym === "€") ? "EUR"
-                   : (currentSym === "$") ? "USD"
-                   : (currentSym === "£") ? "GBP"
-                   : (currentSym === "₦") ? "NGN"
-                   : "CUSTOM";
-    }
-
-    renderConfig(); // remplit les champs + preview
-  }
-
-  function refreshCurrencyPreview() {
-    const sym = safeText($("cfg-currency-symbol")?.value) || "FCFA";
-    const locale = safeText($("cfg-currency-locale")?.value) || "fr-FR";
-    const decimals = Math.max(0, Math.min(6, Math.floor(toNum($("cfg-currency-decimals")?.value, 0))));
-    const position = ($("cfg-currency-position")?.value === "prefix") ? "prefix" : "suffix";
-    const space = ($("cfg-currency-space")?.checked !== false);
-
-    let formatted = "1234.56";
-    try {
-      formatted = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(1234.56);
-    } catch {}
-
-    const out = (position === "prefix")
-      ? `${sym}${space ? " " : ""}${formatted}`
-      : `${formatted}${space ? " " : ""}${sym}`;
-
-    if ($("cfg-currency-preview")) $("cfg-currency-preview").textContent = `Aperçu : ${out}`;
-  }
-function applyConfigLabels() {
-    
-    // --- Branding navbar + titre page ---
-    const brand = safeText(state?.config?.exemple || "");
-    const appTitleEl = document.querySelector(".app-title");
-    const baseTitle = "BusinessFood Manager";
-    const fullTitle = brand ? `${brand} — ${baseTitle}` : baseTitle;
-    if (appTitleEl) appTitleEl.textContent = fullTitle;
-    document.title = fullTitle;
-const pS = safeText(state.config.produitS) || "produit";
+  function applyConfigLabels() {
+    const pS = safeText(state.config.produitS) || "produit";
     const pP = safeText(state.config.produitP) || "produits";
 
     if ($("label-dashboard-total")) $("label-dashboard-total").textContent = `Total ${pP} vendus`;
@@ -799,9 +308,16 @@ const pS = safeText(state.config.produitS) || "produit";
     if ($("dash-stock-restant")) $("dash-stock-restant").textContent = `${state.inventory.finishedUnits} ${pP}`;
   }
   function ensureDataManagerUI() {
-      const page = $("page-config");
+      const host = $("bfm-data-manager-host");
+      const page = host || $("page-config");
       if (!page) return;
-      if ($("bfm-data-manager")) { refreshProfilesUI(); return; }
+      const existing = $("bfm-data-manager");
+      if (existing) {
+        // Si un "host" existe (page Abonnement), on y place le bloc pour éviter une page vide
+        if (host && existing.parentElement !== host) host.appendChild(existing);
+        refreshProfilesUI();
+        return;
+      }
 
       const card = document.createElement("div");
       card.className = "card";
@@ -862,36 +378,7 @@ const pS = safeText(state.config.produitS) || "produit";
             </div>
           </div>
         </div>
-      
-        <hr style="margin:14px 0;opacity:.25;">
-        <div class="form-grid">
-          <div>
-            <label>Identifiant appareil (support)</label>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input id="device-id" type="text" readonly style="flex:1;min-width:240px;" />
-              <button type="button" class="btn btn-secondary" id="btn-copy-device-id">📋 Copier</button>
-            </div>
-            <div class="small" style="opacity:.8;margin-top:6px;">
-              Cet ID sert à activer le <strong>mode TEST</strong> sur tes appareils ou à aider le support.
-            </div>
-          </div>
-
-          <div>
-            <label>Abonnement (cet appareil)</label>
-            <div class="small" style="opacity:.9;">
-              Statut : <strong id="license-status">-</strong>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-              <input id="license-code" type="text" placeholder="Code d'activation (ex: BFM1-20260131)" style="flex:1;min-width:260px;" />
-              <button type="button" class="btn btn-primary" id="btn-activate-license">✅ Activer</button>
-              <button type="button" class="btn btn-secondary" id="btn-toggle-test" style="display:none;">🧪 TEST</button>
-            </div>
-            <div class="small" style="opacity:.8;margin-top:6px;">
-              Si expiré : l’app passe en <strong>mode lecture</strong> (exports OK). Grâce après expiration : <strong>14 jours</strong>.
-            </div>
-          </div>
-        </div>
-`;
+      `;
 
       page.appendChild(card);
 
@@ -927,79 +414,6 @@ const pS = safeText(state.config.produitS) || "produit";
       on($("btn-export-all"), "click", exportAllProfiles);
       on($("btn-import-all"), "click", () => $("file-import-all")?.click());
       on($("file-import-all"), "change", importAllFromFile);
-
-      // --- Device ID + Licence UI ---
-      const deviceId = getDeviceId();
-      if ($("device-id")) $("device-id").value = deviceId;
-
-      const lic = ensureLicense();
-      if ($("license-status")) $("license-status").textContent = licenseStatusLabel(lic);
-
-// Permet au loader whitelist (test-devices.json) de rafraîchir l'UI sans recharger la page
-window.__bfmRefreshLicenseUI = function() {
-  try {
-    const deviceIdNow = getDeviceId();
-    const licNow = ensureLicense();
-    if ($("license-status")) $("license-status").textContent = licenseStatusLabel(licNow);
-
-    // Test button visibility
-    if ($("btn-toggle-test")) {
-      if (isTestDevice(deviceIdNow)) {
-        $("btn-toggle-test").style.display = "inline-flex";
-        // si licence actuelle est TEST, afficher ON, sinon OFF
-        const cur = loadLicense();
-        $("btn-toggle-test").textContent = (cur && cur.status === "TEST") ? "🧪 TEST (ON)" : "🧪 TEST (OFF)";
-      } else {
-        $("btn-toggle-test").style.display = "none";
-      }
-    }
-    updateAppLocks();
-  } catch {}
-};
-
-      on($("btn-copy-device-id"), "click", async () => {
-        const val = deviceId;
-        try {
-          await navigator.clipboard.writeText(val);
-          toast("Device ID copié ✅");
-        } catch {
-          const inp = $("device-id");
-          if (inp) { inp.focus(); inp.select(); document.execCommand("copy"); toast("Device ID copié ✅"); }
-        }
-      });
-
-      on($("btn-activate-license"), "click", () => {
-        const code = $("license-code")?.value || "";
-        const res = activateWithCode(code);
-        if (!res.ok) return toast(res.err || "Activation impossible");
-        toast("Abonnement activé ✅");
-        if ($("license-status")) $("license-status").textContent = licenseStatusLabel(res.lic);
-        updateAppLocks();
-      });
-
-      // Bouton TEST visible seulement si device whitelisted
-      if (isTestDevice(deviceId) && $("btn-toggle-test")) {
-        $("btn-toggle-test").style.display = "inline-flex";
-        $("btn-toggle-test").textContent = "🧪 TEST (ON)";
-        on($("btn-toggle-test"), "click", () => {
-          const cur = loadLicense();
-          if (cur && cur.status === "TEST") {
-            const back = { status: "ACTIVE", paidUntil: nowISO(), plan: "STANDARD", createdAt: cur.createdAt || nowISO() };
-            saveLicense(back);
-            toast("Mode TEST désactivé");
-            $("btn-toggle-test").textContent = "🧪 TEST (OFF)";
-            $("license-status").textContent = licenseStatusLabel(back);
-          } else {
-            const t = { status: "TEST", note: "Manual toggle", createdAt: (cur && cur.createdAt) ? cur.createdAt : nowISO() };
-            saveLicense(t);
-            toast("Mode TEST activé ✅");
-            $("btn-toggle-test").textContent = "🧪 TEST (ON)";
-            $("license-status").textContent = licenseStatusLabel(t);
-          }
-          updateAppLocks();
-        });
-      }
-
 
       refreshProfilesUI();
     }
@@ -1261,19 +675,10 @@ window.__bfmRefreshLicenseUI = function() {
     state.config.produitP = safeText($("cfg-produit-p")?.value) || "produits";
     state.config.exemple  = safeText($("cfg-exemple")?.value);
 
-    // devise (si la UI est présente)
-    if ($("cfg-currency-symbol")) state.config.currencySymbol = safeText($("cfg-currency-symbol").value) || "FCFA";
-    if ($("cfg-currency-locale")) state.config.currencyLocale = safeText($("cfg-currency-locale").value) || "fr-FR";
-    if ($("cfg-currency-decimals")) state.config.currencyDecimals = Math.max(0, Math.min(6, Math.floor(toNum($("cfg-currency-decimals").value, 0))));
-    if ($("cfg-currency-position")) state.config.currencyPosition = ($("cfg-currency-position").value === "prefix") ? "prefix" : "suffix";
-    if ($("cfg-currency-space")) state.config.currencySpace = !!$("cfg-currency-space").checked;
-
     saveState();
     applyConfigLabels();
-    applyCurrencyUITexts(document);
-
-    // rester sur la config (pas de "kick")
-    showPage("config");
+    // retour accueil
+    showPage("home");
     toast("Configuration enregistrée ✅");
   }
 
@@ -1380,7 +785,7 @@ window.__bfmRefreshLicenseUI = function() {
     const name = prompt("Nom de l'ingrédient :", ing.name);
     if (name == null) return;
 
-    const price = prompt("Prix d'achat total (" + currencyLabel() + ") :", String(ing.priceTotal));
+    const price = prompt("Prix d'achat total (FCFA) :", String(ing.priceTotal));
     if (price == null) return;
 
     const qtyDisplay = baseQtyToDisplay(ing.baseQtyTotal, ing.baseUnit, ing.displayUnit);
@@ -1446,7 +851,7 @@ window.__bfmRefreshLicenseUI = function() {
               `Restant : ${ingredientDisplayRemaining(ing)} / ${ingredientDisplayTotal(ing)}`
             ]),
             el("div", { class: "small", style: "opacity:.9;" }, [
-              `Prix total : ${money(ing.priceTotal)} • Prix/unité (${unitLabel}) : ${money(ppu)}`
+              `Prix total : ${money(ing.priceTotal)} • Prix/unité (${unitLabel}) : ${roundSmart(ppu)} FCFA`
             ]),
             el("div", { class: "small", style: "opacity:.9;" }, [
               `Valeur stock : ${money(ingredientStockValue(ing))}${low ? " • ⚠️ Stock bas" : ""}`
@@ -1939,10 +1344,10 @@ window.__bfmRefreshLicenseUI = function() {
           el("div", {}, [
             el("h3", {}, [r.name]),
             el("div", { class: "small", style: "opacity:.9;" }, [
-              `Production : ${r.producedQty} (restant: ${Math.floor(toNum(r.remainingQty, r.producedQty))}) • Coût total : ${money(r.costTotal)} • Coût/unité : ${money(r.costPerUnit)}`
+              `Production : ${r.producedQty} (restant: ${Math.floor(toNum(r.remainingQty, r.producedQty))}) • Coût total : ${money(r.costTotal)} • Coût/unité : ${roundSmart(r.costPerUnit)} FCFA`
             ]),
             el("div", { class: "small", style: "opacity:.9;" }, [
-              `Prix vente/unité : ${money(r.salePrice)} • Marge/unité : ${money(marginUnit)} (${roundSmart(marginPct)}%)`
+              `Prix vente/unité : ${money(r.salePrice)} • Marge/unité : ${roundSmart(marginUnit)} FCFA (${roundSmart(marginPct)}%)`
             ]),
             el("div", { class: "small", style: "opacity:.9;" }, [
               `Capacité théorique restante (si on refait cette recette) : ${cap} ${state.config.produitP || "produits"}`
@@ -2009,82 +1414,6 @@ window.__bfmRefreshLicenseUI = function() {
      7) Packs
   ========================== */
   let packDraftRows = []; // [{id, recipeId, qty}]
-
-  let editingPackId = null; // id du pack en cours de modification (ou null)
-
-  function setPackEditMode(on) {
-    const btn = $("btn-add-pack");
-    if (btn) btn.textContent = on ? "💾 Mettre à jour le pack" : "➜ Créer le pack";
-
-    // Bouton annuler (créé dynamiquement pour ne pas toucher au HTML)
-    let cancel = $("btn-cancel-pack-edit");
-    if (on) {
-      if (!cancel && btn && btn.parentElement) {
-        cancel = el("button", {
-          id: "btn-cancel-pack-edit",
-          type: "button",
-          class: "btn btn-secondary",
-          style: "margin-top:12px;margin-left:8px;"
-        }, ["Annuler"]);
-        btn.parentElement.appendChild(cancel);
-        cancel.addEventListener("click", cancelPackEdit);
-      }
-      if (cancel) cancel.style.display = "";
-      // Titre du bloc pack (optionnel)
-      const h3 = document.querySelector("#page-packs .grid-2 .card h3");
-      if (h3) h3.textContent = "Modifier le pack";
-    } else {
-      if (cancel) cancel.style.display = "none";
-      const h3 = document.querySelector("#page-packs .grid-2 .card h3");
-      if (h3) h3.textContent = "Créer un nouveau pack";
-    }
-  }
-
-  function resetPackForm() {
-    if ($("pack-nom")) $("pack-nom").value = "";
-    if ($("pack-price")) $("pack-price").value = "";
-    // on laisse la marge telle que l'utilisateur l'a mise (pratique)
-    packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
-    editingPackId = null;
-    setPackEditMode(false);
-  }
-
-  function beginEditPack(id) {
-    const p = state.packs.find(x => x.id === id);
-    if (!p) return toast("Pack introuvable.");
-
-    const used = state.sales.some(s => (s.packs || []).some(pp => pp.packId === id));
-    if (used) {
-      if (!confirm("Ce pack a déjà été vendu. Le modifier n'affecte pas l'historique, mais change le pack pour les futures ventes. Continuer ?")) return;
-    }
-
-    editingPackId = id;
-    setPackEditMode(true);
-
-    if ($("pack-nom")) $("pack-nom").value = p.name || "";
-    if ($("pack-margin")) $("pack-margin").value = toNum(p.margin, 0);
-    if ($("pack-price")) $("pack-price").value = toNum(p.price, 0);
-
-    // reconstitue les lignes à partir des items du pack
-    const items = (p.items || [])
-      .filter(it => it && it.recipeId)
-      .map(it => ({ id: uid(), recipeId: it.recipeId, qty: Math.max(1, Math.floor(toNum(it.qty, 1))) }));
-
-    packDraftRows = items.length ? items : [{ id: uid(), recipeId: "", qty: 1 }];
-
-    renderPackDraft();
-
-    // focus + scroll
-    const inputName = $("pack-nom");
-    if (inputName) inputName.focus();
-    toast("Mode modification activé ✏️");
-  }
-
-  function cancelPackEdit() {
-    resetPackForm();
-    renderPackDraft();
-    toast("Modification annulée.");
-  }
 
   function refreshPackRecipeOptions() {
     // rien à faire ici directement: options sont rendues dans les rows
@@ -2234,7 +1563,7 @@ window.__bfmRefreshLicenseUI = function() {
     }
 
     // auto-calc du prix si vide
-    const margin = Math.max(0, toNum($("pack-margin")?.value, 30)); // marge libre (pas de max)
+    const margin = clamp(toNum($("pack-margin")?.value, 30), 0, 90);
     const priceInput = $("pack-price");
     if (priceInput && safeText(priceInput.value) === "") {
       const suggested = Math.ceil(total * (1 + margin / 100));
@@ -2253,7 +1582,7 @@ window.__bfmRefreshLicenseUI = function() {
 
   function addPack() {
     const name = safeText($("pack-nom")?.value);
-    const margin = Math.max(0, toNum($("pack-margin")?.value, 30)); // marge libre (pas de max)
+    const margin = clamp(toNum($("pack-margin")?.value, 30), 0, 90);
     const manualPrice = safeText($("pack-price")?.value);
 
     if (!name) return toast("Nom du pack manquant.");
@@ -2287,31 +1616,6 @@ window.__bfmRefreshLicenseUI = function() {
 
     if (price < cost - 1e-9) return toast("Pack vendu à perte : prix < coût. Corrige le prix.");
 
-    if (editingPackId) {
-      const p = state.packs.find(x => x.id === editingPackId);
-      if (!p) {
-        editingPackId = null;
-        setPackEditMode(false);
-        return toast("Pack en édition introuvable. Recommence.");
-      }
-      p.name = name;
-      p.items = expanded;
-      p.cost = cost;
-      p.margin = margin;
-      p.price = price;
-      p.updatedAt = new Date().toISOString();
-
-      // reset draft
-      resetPackForm();
-
-      saveState();
-      renderPackDraft();
-      renderPacks();
-      refreshSalePackSelect();
-      toast("Pack mis à jour ✅");
-      return;
-    }
-
     const pack = {
       id: uid(),
       name,
@@ -2325,7 +1629,9 @@ window.__bfmRefreshLicenseUI = function() {
     state.packs.push(pack);
 
     // reset draft
-    resetPackForm();
+    if ($("pack-nom")) $("pack-nom").value = "";
+    if ($("pack-price")) $("pack-price").value = "";
+    packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
 
     saveState();
     renderPackDraft();
@@ -2371,10 +1677,7 @@ window.__bfmRefreshLicenseUI = function() {
                 `Coût : ${money(p.cost)} • Prix : ${money(p.price)} • Marge : ${money(marginAbs)} (${roundSmart(marginPct)}%)`
               ])
             ]),
-            el("div", { style: "display:flex;flex-direction:column;gap:8px;min-width:160px;" }, [
-              el("button", { class: "btn btn-secondary", type: "button", onclick: () => beginEditPack(p.id) }, ["Modifier"]),
-              el("button", { class: "btn btn-pink", type: "button", onclick: () => deletePack(p.id) }, ["Supprimer"])
-            ])
+            el("button", { class: "btn btn-pink", type: "button", onclick: () => deletePack(p.id) }, ["Supprimer"])
           ]),
           el("details", { style: "margin-top:10px;" }, [
             el("summary", {}, ["Voir contenu du pack"]),
@@ -2933,7 +2236,7 @@ function saleUnitsFromPacks() {
     const invValue = toNum(state.inventory.finishedValue, 0);
 
     if ($("dash-stats-ventes")) $("dash-stats-ventes").textContent =
-      `Analyse ventes : ${state.sales.length} vente(s), panier moyen ${money(state.sales.length ? (revenueTotal / state.sales.length) : 0)}, coût moyen/unité ${money(avgCost)}`;
+      `Analyse ventes : ${state.sales.length} vente(s), panier moyen ${money(state.sales.length ? (revenueTotal / state.sales.length) : 0)}, coût moyen/unité ${roundSmart(avgCost)} FCFA`;
 
     // ingrédient le plus "cher" en valeur de stock
     const topIng = [...state.ingredients]
@@ -3208,9 +2511,7 @@ function saleUnitsFromPacks() {
 
     // Page d'accueil par défaut
     showPage("home");
-  
-    updateAppLocks();
-}
+  }
 
   document.addEventListener("DOMContentLoaded", boot);
 
