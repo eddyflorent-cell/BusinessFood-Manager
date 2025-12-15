@@ -27,6 +27,7 @@
         <button id="tab-ingredients" onclick="showPage('ingredients')">Ingrédients</button>
         <button id="tab-vendeurs" onclick="showPage('vendeurs')">Vendeurs</button>
         <button id="tab-depenses" onclick="showPage('depenses')">Dépenses</button>
+        <button id="tab-abonnement" onclick="showPage('abonnement')">Abonnement</button>
         <button id="tab-historique" onclick="showPage('historique')">Historique</button>
         <button id="tab-tutoriel" onclick="showPage('tutoriel')">Tutoriel</button>
     </div>
@@ -88,7 +89,17 @@
         </button>
     </div>
 
-    <!-- Carte : Tutoriel -->
+    
+    <!-- Carte : Abonnement -->
+    <div class="home-card">
+        <h2>Abonnement & Activation</h2>
+        <p>Activer l’abonnement sur cet appareil, copier le Device ID, et accéder au mode TEST (si autorisé).</p>
+        <button class="btn btn-orange" onclick="showPage('abonnement')">
+            ➜ Gérer l’abonnement
+        </button>
+    </div>
+
+<!-- Carte : Tutoriel -->
     <div class="home-card">
         <h2>Prendre l’outil en main</h2>
         <p>Suivre le tutoriel pas à pas pour apprendre à utiliser BusinessFood Manager.</p>
@@ -565,339 +576,384 @@
 
 <!-- ======================= PAGE : TUTORIEL ======================= -->
 <section id="page-tutoriel" class="page hidden">
-  <h1>Tutoriel – BusinessFood Manager (version actuelle)</h1>
+    <h1>Tutoriel – Prendre en main BusinessFood Manager</h1>
+    <p class="tuto-intro">
+        Ce guide explique comment utiliser l’application au quotidien.
+        L’idée : tu renseignes d’abord tes ingrédients, puis tes recettes,
+        ensuite tes packs, et enfin tu enregistres les ventes. Le Dashboard
+        et l’Historique se mettent à jour automatiquement.
+    </p>
 
-  <p class="tuto-intro">
-    Cette version gère <strong>plusieurs profils</strong> (configurations complètes), une <strong>devise par profil</strong>,
-    des <strong>recettes</strong> (avec option <strong>déduire le stock xN</strong>), des <strong>packs modifiables</strong>,
-    et des ventes avec contrôle de disponibilité.<br><br>
-    <strong>Important :</strong> au premier démarrage, l’application peut afficher un <strong>assistant de démarrage</strong>
-    et verrouiller certaines rubriques tant que le minimum n’est pas prêt (profil + devise + au moins 1 recette).
-    <br><br>
-    Flux conseillé : <strong>Config/Profil → Ingrédients → Recettes (production) → Packs → Ventes → Dashboard/Historique → Exports</strong>.
-  </p>
+    <div class="tuto-grid">
 
-  <div class="tuto-grid">
+        <!-- Étape 1 : Ingrédients -->
+        <div class="tuto-step">
+            <h3>1. Renseigner les ingrédients</h3>
+            <p><strong>Onglet : Ingrédients</strong></p>
+            <ol>
+                <li>Cliquer sur <strong>Ingrédients</strong> dans le menu.</li>
+                <li>Pour chaque ingrédient (farine, œufs, huile, etc.) :
+                    <ul>
+                        <li>Nom de l’ingrédient.</li>
+                        <li><strong>Prix d’achat</strong> total (ex : 1000 FCFA).</li>
+                        <li><strong>Quantité achetée</strong> (ex : 1 000 g, 12 œufs).</li>
+                        <li><strong>Unité</strong> : g, kg, L, mL, pièce, sachet…</li>
+                        <li>Seuil d’alerte (facultatif) pour savoir quand le stock est bas.</li>
+                    </ul>
+                </li>
+                <li>Cliquer sur <strong>Ajouter l’ingrédient</strong>.</li>
+                <li>La ligne apparaît dans le tableau de stock avec quantité restante,
+                    prix unitaire et valeur du stock.</li>
+            </ol>
+            <p class="tuto-note">
+                ➜ Si tu t’es trompé, clique sur <strong>Modifier</strong>, corrige les infos puis sauvegarde.
+            </p>
+        </div>
 
-    <!-- 0) Profil -->
-    <div class="tuto-step">
-      <h3>0) Choisir / créer un profil (configuration complète)</h3>
-      <p><strong>Menu : Config</strong></p>
-      <ul>
-        <li>Un <strong>profil</strong> contient tout : config + ingrédients + recettes + packs + ventes + dépenses.</li>
-        <li>Dans <strong>Gestion des données</strong> :
-          <ul>
-            <li><strong>Nouveau</strong> : crée un profil vide</li>
-            <li><strong>Dupliquer</strong> : copie totale (idéal pour tester)</li>
-            <li><strong>Renommer / Supprimer</strong></li>
-          </ul>
-        </li>
-      </ul>
-      <p class="tuto-note">➜ L’app ne te sort plus de la page Config : tu peux enchaîner sans aller-retour.</p>
+        <!-- Étape 2 : Recettes -->
+        <div class="tuto-step">
+            <h3>2. Créer les recettes</h3>
+            <p><strong>Onglet : Recettes</strong></p>
+            <ol>
+                <li>Cliquer sur <strong>Recettes</strong>.</li>
+                <li>Donner un nom à la recette (ex : Pâte à produits finis de base, Burger classique, Plat du jour…).</li>
+                <li>Dans le bloc <strong>Ingrédients de la recette</strong> :
+                    <ul>
+                        <li>Choisir un ingrédient dans la liste déroulante.</li>
+                        <li>Indiquer la quantité utilisée dans la recette (même unité que le stock).</li>
+                        <li>Le système calcule automatiquement le <strong>coût utilisé</strong>.</li>
+                        <li>Répéter pour tous les ingrédients de la recette.</li>
+                    </ul>
+                </li>
+                <li>Indiquer le nombre de <strong>produits finis</strong> obtenus avec cette recette
+                    (ex : 20 produits finis, 10 parts de gratin, 15 burgers…).</li>
+                <li>Enregistrer la recette.</li>
+            </ol>
+            <p class="tuto-note">
+                ➜ Le coût total de la recette et le coût par produit fini sont calculés automatiquement.
+            </p>
+        </div>
+
+        <!-- Étape 3 : Packs -->
+        <div class="tuto-step">
+            <h3>3. Définir les packs (options de vente)</h3>
+            <p><strong>Onglet : Packs</strong></p>
+            <ol>
+                <li>Cliquer sur <strong>Packs</strong>.</li>
+                <li>Créer un pack (ex : Pack 10 produits finis, Menu Burger + Boisson, Plateau dégustation…).</li>
+                <li>Indiquer :
+                    <ul>
+                        <li>Le nom du pack.</li>
+                        <li>Le nombre de produits finis inclus.</li>
+                        <li>Le prix de vente du pack.</li>
+                    </ul>
+                </li>
+                <li>Enregistrer le pack.</li>
+            </ol>
+            <p class="tuto-note">
+                ➜ Ces packs seront proposés automatiquement sur la page <strong>Ventes</strong>.
+            </p>
+        </div>
+
+        <!-- Étape 4 : Ventes -->
+        <div class="tuto-step">
+            <h3>4. Enregistrer les ventes</h3>
+            <p><strong>Onglet : Ventes</strong></p>
+            <ol>
+                <li>Cliquer sur <strong>Ventes</strong> ou utiliser le bouton
+                    <strong>“Aller à la page Ventes”</strong> depuis l’accueil.</li>
+                <li>Renseigner :
+                    <ul>
+                        <li>Date et heure.</li>
+                        <li>Vendeur (choisi dans la liste).</li>
+                        <li>Lieu : marché, boutique, événement…</li>
+                    </ul>
+                </li>
+                <li>Pour les <strong>packs</strong> :
+                    <ul>
+                        <li>Choisir un pack dans la liste.</li>
+                        <li>Indiquer la quantité vendue.</li>
+                        <li>Cliquer sur <strong>Ajouter</strong>.</li>
+                    </ul>
+                </li>
+                <li>Pour les <strong>unités hors pack</strong> :
+                    <ul>
+                        <li>Indiquer le nombre d’unités vendues.</li>
+                        <li>Indiquer le prix unitaire si besoin.</li>
+                    </ul>
+                </li>
+                <li>Cliquer sur <strong>Enregistrer la vente</strong>.</li>
+            </ol>
+            <p class="tuto-note">
+                ➜ La vente apparaît dans « Ventes du jour » et dans l’onglet <strong>Historique</strong>.
+            </p>
+        </div>
+
+        <!-- Étape 5 : Suivi & export -->
+        <div class="tuto-step">
+            <h3>5. Suivre les résultats & exporter</h3>
+            <p><strong>Onglets : Dashboard & Historique</strong></p>
+            <ol>
+                <li><strong>Dashboard</strong> :
+                    <ul>
+                        <li>Stock de produits finis et capacité restante.</li>
+                        <li>Revenu total, dépenses totales, bénéfice net.</li>
+                        <li>Meilleur vendeur et pack le plus vendu.</li>
+                    </ul>
+                </li>
+                <li><strong>Historique</strong> :
+                    <ul>
+                        <li>Liste des ventes avec date, lieu, vendeur et détail des packs.</li>
+                        <li>Boutons pour <strong>Exporter PDF</strong>, <strong>Exporter CSV</strong>,
+                            ou <strong>Partager WhatsApp</strong>.</li>
+                    </ul>
+                </li>
+            </ol>
+            <p class="tuto-note">
+                ➜ Idéal pour envoyer un récap au patron ou garder une trace de la journée.
+            </p>
+        </div>
+
+        <!-- Étape 6 : Sauvegarde -->
+        <div class="tuto-step">
+            <h3>6. Sauvegarder tes données</h3>
+            <p><strong>Mode hors-ligne / téléphone</strong></p>
+            <ul>
+                <li>L’application enregistre les données dans le navigateur (localStorage).</li>
+                <li>Pour sécuriser :
+                    <ul>
+                        <li>Exporter régulièrement ton historique en <strong>CSV</strong> ou <strong>PDF</strong>.</li>
+                        <li>Envoyer ces fichiers par mail, WhatsApp ou les stocker sur une clé USB.</li>
+                    </ul>
+                </li>
+                <li>Si tu changes de téléphone ou de navigateur, pense à repartir d’un export.</li>
+            </ul>
+        </div>
+
     </div>
 
-    <!-- 1) Devise -->
-    <div class="tuto-step">
-      <h3>1) Devise & format (par profil)</h3>
-      <p><strong>Menu : Config</strong></p>
-      <ol>
-        <li>Choisis ta <strong>devise</strong> (ex : XAF/FCFA, EUR, USD…).</li>
-        <li>Optionnel : masque/affiche la devise à l’écran (si tu veux juste des chiffres).</li>
-        <li>Enregistre : tous les montants (packs, ventes, dépenses, exports) suivent la devise du profil actif.</li>
-      </ol>
-      <p class="tuto-note">➜ Astuce : 1 profil “Douala (XAF)” + 1 profil “Paris (EUR)” = aucun mélange.</p>
-    </div>
-
-    <!-- 2) Ingrédients -->
-    <div class="tuto-step">
-      <h3>2) Ajouter les ingrédients au stock</h3>
-      <p><strong>Menu : Ingrédients</strong></p>
-      <ol>
-        <li>Renseigne <strong>Nom</strong>, <strong>Prix d’achat</strong>, <strong>Quantité</strong> et <strong>Unité</strong>.</li>
-        <li>Ajoute un <strong>seuil d’alerte</strong> si tu veux être prévenu des stocks bas.</li>
-        <li>Clique <strong>Ajouter l’ingrédient</strong>.</li>
-      </ol>
-    </div>
-
-    <!-- 3) Recettes -->
-    <div class="tuto-step">
-      <h3>3) Créer une recette (base) + calculer son coût</h3>
-      <p><strong>Menu : Recettes</strong></p>
-      <ol>
-        <li>Donne un <strong>nom</strong> à la recette.</li>
-        <li>Indique le <strong>nombre de produits finis</strong> générés (ex : 30 pièces).</li>
-        <li>Indique le <strong>prix de vente unitaire</strong> (utile pour la marge et les ventes à l’unité).</li>
-        <li>Ajoute les ingrédients (quantité + unité) puis enregistre.</li>
-      </ol>
-      <p class="tuto-note">➜ Une recette sert aussi de “produit fini” pour les packs et les ventes.</p>
-    </div>
-
-    <!-- 4) Production / déduction stock xN -->
-    <div class="tuto-step">
-      <h3>4) Produire : “Déduire du stock” xN</h3>
-      <p><strong>Menu : Recettes</strong></p>
-      <ul>
-        <li>Active <strong>Déduire du stock</strong> si tu fabriques réellement (consomme les ingrédients).</li>
-        <li>Choisis <strong>xN</strong> (x1, x2, x3…) = nombre de fournées identiques.</li>
-        <li>Si activé :
-          <ul>
-            <li>✅ ingrédients déduits ×N</li>
-            <li>✅ produits finis ajoutés ×N</li>
-          </ul>
-        </li>
-        <li>Si désactivé : la recette est enregistrée sans impacter le stock (utile pour préparer/simuler).</li>
-      </ul>
-    </div>
-
-    <!-- 5) Modifier recette -->
-    <div class="tuto-step">
-      <h3>5) Modifier une recette</h3>
-      <p><strong>Menu : Recettes → Recettes enregistrées</strong></p>
-      <ul>
-        <li>Clique <strong>Modifier</strong> sur la recette.</li>
-        <li>Tu peux ajuster nom / ingrédients / prix / quantités.</li>
-        <li>⚠️ Si la recette a déjà servi (packs/ventes), certaines modifications peuvent être limitées pour ne pas casser l’historique.</li>
-      </ul>
-    </div>
-
-    <!-- 6) Packs -->
-    <div class="tuto-step">
-      <h3>6) Packs : créer, suggestion, modifier</h3>
-      <p><strong>Menu : Packs</strong></p>
-      <ol>
-        <li>Donne un <strong>nom de pack</strong>.</li>
-        <li>Ajoute des lignes : <strong>Recette</strong> + <strong>Quantité</strong>.</li>
-        <li>Le <strong>coût total</strong> se calcule automatiquement.</li>
-        <li>Renseigne la <strong>marge souhaitée (%)</strong> : la <strong>suggestion</strong> se met à jour en direct (marge sans limite).</li>
-        <li>Saisis le prix du pack (ou utilise la suggestion), puis <strong>Créer le pack</strong>.</li>
-      </ol>
-      <p class="tuto-note">
-        ✅ Tu peux <strong>Modifier</strong> un pack existant (recharge le formulaire) puis “Mettre à jour le pack”.<br>
-        ⚠️ Le logiciel bloque la création d’un pack vendu à perte (<em>prix &lt; coût</em>).
-      </p>
-    </div>
-
-    <!-- 7) Ventes -->
-    <div class="tuto-step">
-      <h3>7) Ventes : packs + ventes à l’unité (par recette)</h3>
-      <p><strong>Menu : Ventes</strong></p>
-      <ol>
-        <li>Renseigne date/heure + vendeur + lieu.</li>
-        <li>Ajoute des <strong>packs</strong> (quantité). Le stock est contrôlé automatiquement.</li>
-        <li>Vente <strong>hors pack</strong> : choisis la <strong>recette</strong> vendue, la quantité, et le prix unitaire.</li>
-        <li>Enregistre la vente : l’app déduit le stock des recettes concernées.</li>
-      </ol>
-      <p class="tuto-note">➜ Si un pack/produit fini n’est plus disponible, la vente est bloquée avec une alerte claire.</p>
-    </div>
-
-    <!-- 8) Dépenses -->
-    <div class="tuto-step">
-      <h3>8) Dépenses</h3>
-      <p><strong>Menu : Dépenses</strong></p>
-      <ol>
-        <li>Ajoute une dépense : date, catégorie, montant, note.</li>
-        <li>Les dépenses impactent le bénéfice net affiché sur le Dashboard.</li>
-      </ol>
-    </div>
-
-    <!-- 9) Historique + exports -->
-    <div class="tuto-step">
-      <h3>9) Historique & exports (PDF / CSV / WhatsApp)</h3>
-      <p><strong>Menu : Historique</strong></p>
-      <ul>
-        <li><strong>Exporter PDF</strong> : génère un PDF à partager / imprimer.</li>
-        <li><strong>Exporter CSV</strong> : parfait pour Excel (analyse, compta).</li>
-        <li><strong>Partager WhatsApp</strong> : envoi rapide des résumés.</li>
-      </ul>
-      <p class="tuto-note">➜ Bon réflexe : exporter régulièrement (clé USB / mail / WhatsApp) pour éviter les pertes.</p>
-    </div>
-
-    <!-- 10) Sauvegarde / export / import -->
-    <div class="tuto-step">
-      <h3>10) Sauvegarder / Exporter / Importer tes données</h3>
-      <p><strong>Menu : Config → Gestion des données</strong></p>
-      <ul>
-        <li><strong>Sauvegarder maintenant</strong> : point de contrôle manuel (en plus de l’auto-save).</li>
-        <li><strong>Export profil</strong> : télécharge un fichier JSON du profil actif.</li>
-        <li><strong>Import profil</strong> : restaure/crée un profil depuis un JSON.</li>
-        <li><strong>Export/Import TOUT</strong> : migration complète (tous les profils) si tu changes d’appareil.</li>
-      </ul>
-    </div>
-
-    <!-- 11) Abonnement / mode lecture / mode TEST -->
-    <div class="tuto-step">
-      <h3>11) Abonnement, grâce (14 jours) et mode TEST</h3>
-      <p><strong>Menu : Config → Gestion des données</strong></p>
-      <ul>
-        <li><strong>Identifiant appareil (support)</strong> : sert à l’activation et au support.</li>
-        <li><strong>Code d’activation</strong> : saisis le code fourni, puis clique <strong>Activer</strong>.</li>
-        <li>Si l’abonnement est expiré : l’app passe en <strong>mode lecture</strong> (consultation + exports OK, ajout/modification bloqués).</li>
-        <li><strong>Grâce après expiration : 14 jours</strong> (si besoin de temps pour renouveler).</li>
-        <li><strong>Mode TEST</strong> (développement/démo) : disponible uniquement sur les appareils autorisés.<br>
-            ⚠️ Le mode TEST n’est pas destiné à la production.
-        </li>
-      </ul>
-    </div>
-
-  </div>
-
-  <p class="tuto-outro">
-    💡 Routine “pro” : <strong>Produire (déduire xN) → Packs → Ventes → Dépenses → Historique → Export</strong>.
-    <br>
-    Et pour tester sans risque : <strong>Dupliquer un profil</strong> puis expérimenter.
-  </p>
+    <p class="tuto-outro">
+        💡 En résumé : <strong>Ingrédients → Recettes → Packs → Ventes → Dashboard & Historique</strong>.<br>
+        Une fois la base configurée, tu n’as plus qu’à saisir les ventes chaque jour.
+    </p>
 </section>
 
+
+<section id="page-abonnement" class="page hidden">
+    <div class="card">
+        <h1>Abonnement & Activation</h1>
+        <p class="subtitle">
+            Ici tu gères l’abonnement de <strong>cet appareil</strong> : Device ID, code d’activation, mode lecture et mode TEST.
+            <br><strong>Important :</strong> l’abonnement démarre le <strong>jour de l’activation</strong> (pas le jour du paiement).
+        </p>
+
+        <div class="small" style="opacity:.9;margin-top:10px;">
+            Pour l’activation, utilise directement le bloc <strong>Gestion des données</strong> ci-dessous : tu y trouveras
+            le <strong>Device ID</strong>, le champ <strong>Code d’activation</strong>, et le bouton <strong>Activer</strong>.
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+            <button class="btn btn-primary" type="button" onclick="showPage('config')">⚙ Ouvrir la configuration</button>
+            <button class="btn btn-secondary" type="button" onclick="showPage('tutoriel')">📘 Voir le tutoriel</button>
+        </div>
+
+        <hr style="margin:14px 0;opacity:.2;">
+
+        
+<h3>Comment l’abonnement se passe (Phase 1)</h3>
+<ol>
+    <li>Tu paies via <strong>Orange Money</strong> ou <strong>MTN MoMo</strong>.</li>
+    <li>Tu copies ton <strong>Device ID (support)</strong> et tu l’envoies au support avec la preuve de paiement.</li>
+    <li>Le support te renvoie un <strong>code d’activation</strong>.</li>
+    <li>Tu colles le code dans l’app puis tu cliques <strong>Activer</strong>.</li>
+</ol>
+
+<div class="card" style="margin-top:12px;">
+  <h3>Support & activation</h3>
+  <p style="margin:6px 0 10px;">
+    Besoin d’aide pour l’activation ou l’import/export ? Contacte le support et joins ton <strong>Device ID</strong>.
+  </p>
+  <ul style="margin:0;padding-left:18px;">
+    <li><strong>Email :</strong> fotsiglobalservices@gmail.com</li>
+    <li><strong>WhatsApp :</strong> +237 6 91 83 72 74</li>
+    <li><strong>Délai :</strong> 24–72h ouvrées</li>
+  </ul>
+</div>
+
+
+
+        <p class="small" style="opacity:.85;">
+            Si l’abonnement expire : l’app passe en <strong>mode lecture</strong> (consultation + exports OK ; ajout/modification bloqués).<br>
+            <strong>Grâce après expiration :</strong> 14 jours.
+        </p>
+    </div>
+
+    <div id="bfm-data-manager-host"></div>
+</section>
 
 
 
 
 <!-- ======================= PAGE : MENTIONS LÉGALES ======================= -->
-<section id="page-mentions" class="page hidden">
+<section id="page-legal" class="page hidden">
   <div class="card">
     <h1>Mentions légales</h1>
 
-    <h2>Nom commercial</h2>
-    <p><strong>BusinessFood Manager</strong></p>
+    <h3>Éditeur</h3>
+    <ul>
+      <li><strong>Nom commercial :</strong> BusinessFood Manager</li>
+      <li><strong>Éditeur :</strong> Fotsi Global Services / Takougang Eddy</li>
+      <li><strong>RCCM :</strong> CM-DLA-01-2025 A-10-01506</li>
+      <li><strong>Adresse :</strong> Akwa, Douala</li>
+      <li><strong>Contact :</strong> Eddy Takougang</li>
+      <li><strong>WhatsApp :</strong> +33 6 29 85 02 14</li>
+      <li><strong>Email :</strong> eddy.takougang@gmail.com</li>
+    </ul>
 
-    <h2>Éditeur</h2>
+    <h3>Support</h3>
+    <ul>
+      <li><strong>Email support :</strong> fotsiglobalservices@gmail.com</li>
+      <li><strong>WhatsApp support :</strong> +237 6 91 83 72 74</li>
+      <li><strong>Délais :</strong> 24–72h ouvrées</li>
+    </ul>
+
+    <h3>Version</h3>
     <p>
-      <strong>Fotsi Global Services</strong> / Takougang Eddy<br>
-      RCCM : <strong>CM-DLA-01-2025 A-10-01506</strong><br>
-      Adresse : <strong>Akwa, Douala</strong><br>
-      Contact : <strong>Eddy Takougang</strong><br>
-      WhatsApp : <strong>+33 6 29 85 02 14</strong><br>
-      Email : <strong>eddy.takougang@gmail.com</strong>
+      <strong>Version :</strong> <span id="bfm-version">vX.Y.Z</span> — 
+      <strong>Dernière mise à jour :</strong> <span id="bfm-last-update">[date]</span>
     </p>
 
-    <h2>Support</h2>
-    <p>
-      Email : <strong>fotsiglobalservices@gmail.com</strong><br>
-      WhatsApp : <strong>+237 6 91 83 72 74</strong><br>
-      Horaires / délais : <strong>24–72h ouvrées</strong>
+    <h3>Données & confidentialité</h3>
+    <p class="small" style="opacity:.9;">
+      Les données saisies (ingrédients, recettes, ventes, dépenses…) sont stockées <strong>localement</strong> dans le navigateur (localStorage).
+      Pour sécuriser vos informations, utilisez régulièrement <strong>Export profil</strong> / <strong>Export TOUT</strong> et conservez une copie (mail, clé USB, cloud).
     </p>
 
-    <h2>Hébergement / serveurs</h2>
-    <p>
-      Par défaut, l’application fonctionne <strong>hors ligne</strong> : les données sont stockées <strong>localement</strong>
-      sur l’appareil (stockage navigateur / application). Aucun serveur n’est requis pour l’usage standard.
+    <h3>Propriété intellectuelle</h3>
+    <p class="small" style="opacity:.9;">
+      © 2025 Fotsi Global Services / Takougang Eddy. Tous droits réservés.
+      Toute reproduction, diffusion ou utilisation non autorisée du contenu, de l’interface ou du code est interdite.
     </p>
 
-    <h2>Propriété intellectuelle</h2>
-    <p>
-      L’application, son interface, ses textes et son code sont protégés. Toute reproduction, diffusion, revente,
-      extraction ou modification non autorisée est interdite.
-    </p>
-
-    <h2>Version</h2>
-    <p>Version : <strong>v6.9.2</strong> — Dernière mise à jour : <strong>13/12/2025</strong></p>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" type="button" onclick="showPage('home')">↩ Retour à l’accueil</button>
+      <button class="btn btn-primary" type="button" onclick="showPage('abonnement')">🔐 Abonnement</button>
+    </div>
   </div>
 </section>
+
+
 
 <!-- ======================= PAGE : CONFIDENTIALITÉ ======================= -->
 <section id="page-confidentialite" class="page hidden">
   <div class="card">
     <h1>Politique de confidentialité</h1>
 
-    <h2>Données traitées</h2>
-    <p>
-      BusinessFood Manager enregistre des données de gestion : profils, configuration, ingrédients, recettes, packs,
-      ventes, dépenses, historiques, et éventuellement des informations de vendeur (nom/pseudo), lieu et notes.
+    <h3>Données traitées</h3>
+    <p class="small" style="opacity:.92;">
+      BusinessFood Manager enregistre des données de gestion saisies par l’utilisateur : profils, configuration, ingrédients,
+      recettes, packs, ventes, dépenses, historiques, notes et informations liées à l’activité (type d’activité, marque/nom).
     </p>
 
-    <h2>Stockage</h2>
-    <p>
-      Les données sont stockées <strong>localement sur l’appareil</strong> (stockage du navigateur / application).
-      Par défaut, l’application <strong>ne transmet aucune donnée</strong> à un serveur.
+    <h3>Stockage</h3>
+    <p class="small" style="opacity:.92;">
+      Par défaut, les données sont stockées <strong>localement</strong> sur l’appareil (stockage du navigateur / application).
+      L’application ne transmet pas automatiquement les données vers un serveur.
     </p>
 
-    <h2>Exports / partages</h2>
-    <p>
-      Les exports (PDF/CSV/JSON) sont générés <strong>à la demande</strong>. Si vous partagez un export (WhatsApp, email,
-      clé USB), cela relève de votre choix.
+    <h3>Exports / partages</h3>
+    <p class="small" style="opacity:.92;">
+      Les exports (JSON, PDF, CSV…) sont générés <strong>à la demande</strong>. Si vous envoyez un export par WhatsApp, email,
+      cloud ou clé USB, c’est un choix de l’utilisateur.
     </p>
 
-    <h2>Conservation & suppression</h2>
-    <p>
-      Les données restent disponibles tant que vous conservez vos profils sur l’appareil. Vous pouvez supprimer un profil
-      (ou remplacer vos données via import) à tout moment.
+    <h3>Conservation & suppression</h3>
+    <p class="small" style="opacity:.92;">
+      Les données restent accessibles tant qu’elles ne sont pas supprimées (suppression de profil, suppression navigateur, ou
+      remplacement via import). Nous recommandons des sauvegardes régulières via <strong>Export</strong>.
     </p>
 
-    <h2>Bonnes pratiques</h2>
-    <ul>
-      <li>Protégez l’appareil (verrouillage / code) et limitez les accès.</li>
-      <li>Faites des <strong>exports réguliers</strong> (JSON/CSV/PDF) pour sauvegarde.</li>
-      <li>En cas de changement d’appareil, utilisez <strong>Export TOUT</strong> puis <strong>Import TOUT</strong>.</li>
+    <h3>Sécurité (bonnes pratiques)</h3>
+    <ul class="small" style="opacity:.92;">
+      <li>Protégez l’appareil (code/PIN) et limitez les accès.</li>
+      <li>Faites un <strong>Export TOUT</strong> régulièrement (mail, clé USB, cloud).</li>
+      <li>En cas de changement d’appareil : exportez puis importez.</li>
     </ul>
 
-    <p class="small">
-      Note : cette page décrit le fonctionnement actuel de l’app (usage local, sans synchronisation cloud).
-    </p>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" type="button" onclick="showPage('home')">↩ Accueil</button>
+      <button class="btn btn-primary" type="button" onclick="showPage('abonnement')">🔐 Abonnement</button>
+      <button class="btn btn-secondary" type="button" onclick="showPage('legal')">⚖ Mentions légales</button>
+    </div>
   </div>
 </section>
+
 
 <!-- ======================= PAGE : CONDITIONS D’UTILISATION ======================= -->
 <section id="page-cgu" class="page hidden">
   <div class="card">
     <h1>Conditions d’utilisation (CGU) & Licence</h1>
 
-    <h2>Objet</h2>
-    <p>
-      BusinessFood Manager est un <strong>outil de gestion</strong> (stock, recettes, packs, ventes, dépenses, marges,
-      exports). Il n’est pas présenté comme un logiciel de caisse certifié.
+    <h3>1) Objet</h3>
+    <p class="small" style="opacity:.92;">
+      BusinessFood Manager est un <strong>outil de gestion</strong> (stock, recettes, packs, ventes, dépenses, marges, exports).
+      Il n’est pas présenté comme un logiciel de caisse certifié ni comme un outil comptable officiel.
     </p>
 
-    <h2>Licence</h2>
-    <ul>
-      <li>Licence d’utilisation <strong>non exclusive</strong>, <strong>non transférable</strong>, liée à un appareil.</li>
-      <li>Interdiction de copier, revendre, décompiler ou distribuer l’application sans autorisation écrite.</li>
+    <h3>2) Licence</h3>
+    <ul class="small" style="opacity:.92;">
+      <li>Licence d’utilisation <strong>non exclusive</strong> et <strong>non transférable</strong>, liée à un appareil.</li>
+      <li>Interdiction de copier, revendre, louer, redistribuer, décompiler ou modifier l’application sans autorisation écrite.</li>
+      <li>L’éditeur peut mettre à jour l’application (corrections, sécurité, améliorations).</li>
     </ul>
 
-    <h2>Abonnement & accès</h2>
-    <p>
-      L’accès peut être soumis à un abonnement. En cas d’expiration, l’application peut basculer en <strong>mode lecture</strong>
-      (consultation + exports possibles ; ajout/modification bloqués). Une <strong>grâce</strong> peut s’appliquer après expiration.
+    <h3>3) Compte, abonnement & accès</h3>
+    <p class="small" style="opacity:.92;">
+      L’accès complet peut nécessiter un abonnement. En cas d’expiration, l’application peut basculer en <strong>mode lecture</strong>
+      (consultation + exports possibles ; ajout/modification bloqués). Une période de <strong>grâce</strong> peut s’appliquer.
     </p>
 
-    <h2>Mode hors ligne</h2>
-    <p>
-      L’application fonctionne hors ligne. Certaines fonctions (activation/renouvellement) peuvent nécessiter une connexion
-      selon la méthode de distribution.
-    </p>
-
-    <h2>Sauvegarde & responsabilité</h2>
-    <p>
+    <h3>4) Responsabilité & sauvegardes</h3>
+    <p class="small" style="opacity:.92;">
       Les données étant stockées localement, l’utilisateur est responsable de ses sauvegardes (exports). L’éditeur ne peut être tenu
       responsable d’une perte de données due à l’appareil (panne, vol, suppression navigateur) en l’absence de sauvegarde.
     </p>
 
-    <h2>Support</h2>
-    <p>
+    <h3>5) Support</h3>
+    <p class="small" style="opacity:.92;">
       Support : <strong>fotsiglobalservices@gmail.com</strong> / WhatsApp <strong>+237 6 91 83 72 74</strong> — délai : <strong>24–72h ouvrées</strong>.
     </p>
 
-    <h2>Droit applicable</h2>
-    <p>
-      Sauf disposition contraire, le droit applicable et la juridiction compétente sont ceux du lieu d’établissement de l’éditeur,
-      après tentative de résolution amiable.
+    <h3>6) Droit applicable</h3>
+    <p class="small" style="opacity:.92;">
+      En l’absence de disposition contraire, le droit applicable est celui du lieu d’établissement de l’éditeur, après tentative de
+      résolution amiable.
     </p>
+
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" type="button" onclick="showPage('home')">↩ Accueil</button>
+      <button class="btn btn-primary" type="button" onclick="showPage('abonnement')">🔐 Abonnement</button>
+      <button class="btn btn-secondary" type="button" onclick="showPage('legal')">⚖ Mentions légales</button>
+    </div>
   </div>
 </section>
 
-
 <footer class="app-footer">
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
-      <div>
-        BusinessFood Manager – © 2025 Takougang Eddy • Fotsi Global Services
-        <span class="small" style="opacity:.8;">• v6.9.2</span>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-secondary" type="button" onclick="showPage('mentions')">Mentions légales</button>
-        <button class="btn btn-secondary" type="button" onclick="showPage('confidentialite')">Confidentialité</button>
-        <button class="btn btn-secondary" type="button" onclick="showPage('cgu')">Conditions</button>
-      </div>
-    </div>
-</footer>
+    BusinessFood Manager – © 2025 Takougang Eddy • Fotsi Global Services
+ • <a href="javascript:void(0)" onclick="showPage('legal')" style="color:inherit;text-decoration:underline;">Mentions légales</a> • <a href="javascript:void(0)" onclick="showPage('confidentialite')" style="color:inherit;text-decoration:underline;">Confidentialité</a> • <a href="javascript:void(0)" onclick="showPage('cgu')" style="color:inherit;text-decoration:underline;">Conditions</a></footer>
+
+
+<script>
+  // Version affichée dans Mentions légales (modifiable manuellement avant publication)
+  const BFM_BUILD_VERSION = "v7.1.0";
+  const BFM_LAST_UPDATE = "14/12/2025";
+  document.addEventListener("DOMContentLoaded", () => {
+    const v = document.getElementById("bfm-version");
+    const d = document.getElementById("bfm-last-update");
+    if (v) v.textContent = BFM_BUILD_VERSION;
+    if (d) d.textContent = BFM_LAST_UPDATE;
+  });
+</script>
 
 <!-- ======================= SCRIPTS ======================= -->
 <script src="app.js"></script>
