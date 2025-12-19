@@ -974,3 +974,36 @@ body[data-page="historique"]{  --accent:#a855f7; --accent-soft:rgba(168,85,247,.
   box-shadow: 0 0 0 4px var(--accent-soft) !important;
   border-color: var(--accent) !important;
 }
+/* =======================
+   FIX DASHBOARD RESPONSIVE
+   ======================= */
+
+/* Reset sûr : la grille doit pouvoir respirer */
+#page-dashboard .dashboard-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+/* Evite les débordements bizarres */
+#page-dashboard .dash-card{
+  min-width: 0;
+}
+#page-dashboard .dash-card h3{
+  word-break: break-word;
+}
+
+/* IMPORTANT : sur mobile, une seule colonne + les "big" ne doivent PLUS span 2 */
+@media (max-width: 768px){
+  #page-dashboard .dashboard-grid{
+    grid-template-columns: 1fr;
+  }
+  #page-dashboard .dash-card.big{
+    grid-column: 1 / -1; /* ou "span 1" */
+  }
+}
+
+/* filet de sécurité anti scroll horizontal */
+html, body{
+  overflow-x: hidden;
+}
