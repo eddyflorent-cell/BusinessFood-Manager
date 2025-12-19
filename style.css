@@ -1007,3 +1007,21 @@ body[data-page="historique"]{  --accent:#a855f7; --accent-soft:rgba(168,85,247,.
 html, body{
   overflow-x: hidden;
 }
+/* ===== DASHBOARD MOBILE: STOP TRONCAGE ===== */
+@media (max-width: 900px){
+  #page-dashboard .dashboard-grid{
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* LE POINT CLE : les cartes .big ne doivent jamais span 2 en mobile */
+  #page-dashboard .dash-card.big{
+    grid-column: auto / span 1 !important;
+  }
+}
+
+/* Sécurité anti overflow horizontal */
+#page-dashboard, html, body{
+  overflow-x: hidden !important;
+}
