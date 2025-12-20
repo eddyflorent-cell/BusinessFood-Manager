@@ -91,6 +91,79 @@
       a.remove();
     }, 0);
   }
+const SUBS_PREFIX = "BFM1.";
+const SUBS_SECRET = "BFM_PHASE1_SECRET_CHANGE_ME_2025_12_14"; // EXACTEMENT le même que le générateur
+const DEVICE_ID_KEY = "BFM_DEVICE_ID_V1";
+
+function getOrCreateDeviceId() {
+  let did = (localStorage.getItem(DEVICE_ID_KEY) || "").trim();
+  if (did) return did;
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  const rnd = Math.random().toString(36).slice(2, 10).toUpperCase();
+  did = `BFM-${y}${m}${da}-${rnd}`;
+  localStorage.setItem(DEVICE_ID_KEY, did);
+  return did;
+}
+
+function b64urlEncodeBytes(bytes) {
+  let bin = "";
+  const arr = new Uint8Array(bytes);
+  for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function b64urlDecodeToBytes(b64url) {
+  const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((b64url.length + 3) % 4);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function b64urlDecodeText(b64url) {
+  return new TextDecoder().decode(b64urlDecodeToBytes(b64url));
+}
+
+async function hmacSha256B64Url(message, secret) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return b64urlEncodeBytes(sig);
+}
+
+async function verifySignedActivationCode(code, expectedDid) {
+  const raw = String(code || "").trim();
+  if (!raw.startsWith(SUBS_PREFIX)) return { ok: false, reason: "FORMAT" };
+
+  const rest = raw.slice(SUBS_PREFIX.length);
+  const parts = rest.split(".");
+  if (parts.length !== 2) return { ok: false, reason: "FORMAT" };
+
+  const payloadB64 = parts[0];
+  const sigB64 = parts[1];
+
+  const expectedSig = await hmacSha256B64Url(payloadB64, SUBS_SECRET);
+  if (sigB64 !== expectedSig) return { ok: false, reason: "SIGNATURE" };
+
+  const payload = JSON.parse(b64urlDecodeText(payloadB64));
+  if (!payload || payload.v !== 1) return { ok: false, reason: "PAYLOAD" };
+
+  const did = String(payload.did || "").trim();
+  const days = Number(payload.days);
+
+  if (!did || did !== expectedDid) return { ok: false, reason: "DEVICE" };
+  if (!Number.isFinite(days) || days <= 0 || days > 3650) return { ok: false, reason: "DAYS" };
+
+  return { ok: true, payload };
+}
 
   /* =========================
      1) Storage
@@ -240,6 +313,306 @@
 
   let state = loadState();
 
+  /* =========================
+     1bis) Abonnement / Activation (device-wide)
+     - Stocké hors profils (localStorage séparé)
+     - Mode TEST optionnel
+     - En cas d’expiration : mode lecture (consult + exports OK)
+  ========================== */
+
+  const SUBS_KEY = "BFM_SUBSCRIPTION_V1";
+  
+
+
+  function nowMs() { return Date.now(); }
+  function toISODate(ms) { return new Date(ms).toISOString().slice(0,10); }
+
+  function loadSubscription() {
+    try {
+      const raw = localStorage.getItem(SUBS_KEY);
+      if (!raw) return { deviceId: "", activatedAt: 0, expiresAt: 0, lastCode: "", testUntil: 0 };
+      const s = JSON.parse(raw);
+      return {
+        deviceId: String(s.deviceId || ""),
+        activatedAt: toNum(s.activatedAt, 0),
+        expiresAt: toNum(s.expiresAt, 0),
+        lastCode: String(s.lastCode || ""),
+        testUntil: toNum(s.testUntil, 0),
+      };
+    } catch {
+      return { deviceId: "", activatedAt: 0, expiresAt: 0, lastCode: "", testUntil: 0 };
+    }
+  }
+
+  function saveSubscription(sub) {
+    try { localStorage.setItem(SUBS_KEY, JSON.stringify(sub)); }
+    catch (e) { console.warn("BFM: saveSubscription", e); }
+  }
+
+  function ensureDeviceId(sub) {
+    if (sub.deviceId) return sub.deviceId;
+    // ID stable, non-personnel, pour support
+    const rand = Math.random().toString(36).slice(2, 10).toUpperCase();
+    const stamp = new Date().toISOString().slice(0,10).replaceAll("-","");
+    sub.deviceId = `BFM-${stamp}-${rand}`;
+    saveSubscription(sub);
+    return sub.deviceId;
+  }
+
+  // Parsing souple :
+  // - Si le code contient YYYY-MM-DD => expiration ce jour-là
+  // - Si le code contient D30 / D90 => durée en jours
+  // - Sinon => 30 jours
+  function activationToExpiresAt(code) {
+    const c = String(code || "").trim().toUpperCase();
+    const dateM = c.match(/(20\d{2})[-\/.](\d{2})[-\/.](\d{2})/);
+    if (dateM) {
+      const y = Number(dateM[1]), m = Number(dateM[2]), d = Number(dateM[3]);
+      const dt = new Date(Date.UTC(y, m-1, d, 23, 59, 59));
+      return dt.getTime();
+    }
+    const durM = c.match(/\bD(\d{1,3})\b/);
+    const days = durM ? Math.max(1, Math.min(365, Number(durM[1]))) : 30;
+    return nowMs() + days * 24 * 3600 * 1000;
+  }
+
+  function getSubscriptionStatus(sub) {
+    const now = nowMs();
+    const activeUntil = Math.max(toNum(sub.expiresAt, 0), toNum(sub.testUntil, 0));
+    const active = activeUntil > now;
+    const expiresAt = toNum(sub.expiresAt, 0);
+    const test = toNum(sub.testUntil, 0) > now && expiresAt <= now; // test actif sans abo actif
+    const daysLeft = activeUntil ? Math.ceil((activeUntil - now) / (24*3600*1000)) : 0;
+
+    const graceDays = 14;
+    const expired = expiresAt > 0 && expiresAt <= now;
+    const expiredDays = expired ? Math.floor((now - expiresAt) / (24*3600*1000)) : 0;
+    const inGrace = expired && expiredDays <= graceDays;
+
+    return { active, activeUntil, expiresAt, test, daysLeft, expired, expiredDays, inGrace, graceDays };
+  }
+
+  // Mode lecture si pas actif
+  let subscription = loadSubscription();
+  ensureDeviceId(subscription);
+
+  function isReadOnlyMode() {
+    return !getSubscriptionStatus(subscription).active;
+  }
+
+  function applyReadOnlyToPage(pageName) {
+    const status = getSubscriptionStatus(subscription);
+    const page = $(`page-${pageName}`);
+    if (!page) return;
+
+    // Pages toujours autorisées
+    const alwaysEditable = (pageName === "abonnement");
+    const alwaysFree = (pageName === "home" || pageName === "dashboard" || pageName === "tutoriel" || pageName === "historique" || pageName === "mentionslegales" || pageName === "confidentialite" || pageName === "conditions");
+
+    // Banner
+    let banner = $("bfm-readonly-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "bfm-readonly-banner";
+      banner.className = "readonly-banner hidden";
+      banner.innerHTML = `
+        <strong>Mode lecture</strong> — ajout/modification bloqués. 
+        <span class="small" id="bfm-readonly-banner-detail"></span>
+        <button class="btn btn-secondary" style="margin-left:10px;" type="button" onclick="showPage('abonnement')">🔐 Activer</button>
+      `;
+      document.body.appendChild(banner);
+    }
+    const detail = $("bfm-readonly-banner-detail");
+    if (detail) {
+      if (status.active) detail.textContent = "";
+      else if (status.test) detail.textContent = `TEST en cours : ${status.daysLeft} jour(s) restant(s).`;
+      else if (status.expiresAt > 0) detail.textContent = `Abonnement expiré${status.inGrace ? " (grâce)" : ""} : ${status.expiredDays} jour(s).`;
+      else detail.textContent = `Aucun abonnement actif.`;
+    }
+
+    // Affichage bannière globale si lecture
+    if (!status.active) banner.classList.remove("hidden");
+    else banner.classList.add("hidden");
+
+    // Si lecture : désactiver champs/boutons des pages "édition"
+    document.body.classList.toggle("readonly", !status.active);
+
+    if (alwaysFree || alwaysEditable) return;
+
+    if (!status.active) {
+      // disable controls within this page
+      page.querySelectorAll("input, select, textarea, button").forEach(el => {
+        // garder la navigation (hors page) et quelques boutons d'export si présents
+        if (el.closest(".nav-links")) return;
+        if (el.dataset && el.dataset.allowReadonly === "1") return;
+        el.disabled = true;
+      });
+    } else {
+      // réactiver
+      page.querySelectorAll("input, select, textarea, button").forEach(el => {
+        if (el.closest(".nav-links")) return;
+        // ne pas toucher aux éléments explicitement désactivés dans le HTML
+        if (el.hasAttribute("data-hard-disabled")) return;
+        el.disabled = false;
+      });
+    }
+  }
+
+  function copyText(text) {
+    const t = String(text || "");
+    if (!t) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(() => toast("Copié ✅")).catch(() => {});
+      return;
+    }
+    // fallback
+    const ta = document.createElement("textarea");
+    ta.value = t;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); toast("Copié ✅"); } catch {}
+    ta.remove();
+  }
+
+  function ensureSubscriptionUI() {
+    const host = $("bfm-data-manager-host");
+    if (!host) return;
+
+    let existing = $("bfm-subscription-ui");
+    if (existing) return; // already there
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.id = "bfm-subscription-ui";
+    card.style.marginTop = "14px";
+
+    card.innerHTML = `
+      <h2>Support & activation</h2>
+      <p class="subtitle small" style="margin-bottom:10px;">
+        Paiement via <strong>Orange Money</strong> ou <strong>MTN MoMo</strong> → envoie ton <strong>Device ID</strong> au support avec la preuve → reçois un <strong>code</strong> → colle-le ici puis <strong>Activer</strong>.
+      </p>
+
+      <div class="form-grid" style="align-items:end;">
+        <div>
+          <label>Device ID (support)</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <input id="sub-device-id" class="form-control" type="text" readonly />
+            <button id="sub-copy-device" class="btn btn-secondary" type="button">📋 Copier</button>
+          </div>
+          <div class="small" style="opacity:.85;margin-top:6px;">
+            Support : <strong>fotsiglobalservices@gmail.com</strong> — WhatsApp : <strong>+237 6 91 83 72 74</strong>
+          </div>
+        </div>
+
+        <div>
+          <label>Code d’activation</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <input id="sub-code" class="form-control" type="text" placeholder="Ex : BFM-D30-XXXX ou 2025-12-31-XXXX" />
+            <button id="sub-activate" class="btn btn-primary" type="button">Activer</button>
+          </div>
+          <div class="small" style="opacity:.85;margin-top:6px;" id="sub-status">Statut : -</div>
+        </div>
+
+        <div>
+          <label>Mode TEST</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button id="sub-start-test" class="btn btn-yellow" type="button">Démarrer TEST (7j)</button>
+            <button id="sub-stop-test" class="btn btn-secondary" type="button">Arrêter TEST</button>
+          </div>
+          <div class="small" style="opacity:.85;margin-top:6px;">
+            Le TEST sert à démontrer l’app : après expiration, l’app passe en <strong>mode lecture</strong> (exports OK).
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Insert above data manager block (host)
+    host.parentElement.insertBefore(card, host);
+
+    const dev = $("sub-device-id");
+    const btnCopy = $("sub-copy-device");
+    const inpCode = $("sub-code");
+    const btnAct = $("sub-activate");
+    const btnTest = $("sub-start-test");
+    const btnStop = $("sub-stop-test");
+    const statusEl = $("sub-status");
+
+    function refreshSubUI() {
+      const st = getSubscriptionStatus(subscription);
+      if (dev) dev.value = subscription.deviceId || "";
+      if (!statusEl) return;
+
+      if (st.active && st.expiresAt > nowMs()) {
+        statusEl.innerHTML = `Statut : <strong>ACTIF</strong> — expire le <strong>${toISODate(st.expiresAt)}</strong> (${st.daysLeft} jour(s)).`;
+      } else if (st.test) {
+        statusEl.innerHTML = `Statut : <strong>TEST</strong> — actif jusqu’au <strong>${toISODate(st.activeUntil)}</strong> (${st.daysLeft} jour(s)).`;
+      } else if (st.expiresAt > 0) {
+        statusEl.innerHTML = `Statut : <strong>EXPIRÉ</strong> — depuis ${st.expiredDays} jour(s)${st.inGrace ? ` (grâce ${st.graceDays}j)` : ""}.`;
+      } else {
+        statusEl.innerHTML = `Statut : <strong>INACTIF</strong> — mode lecture.`;
+      }
+    }
+
+    if (btnCopy) btnCopy.addEventListener("click", () => copyText(subscription.deviceId));
+   if (btnAct) btnAct.addEventListener("click", async () => {
+  const code = safeText(inpCode?.value);
+  if (!code) return toast("Code manquant.");
+
+  // Option B : on accepte uniquement les codes signés BFM1....
+  if (!code.startsWith(SUBS_PREFIX)) {
+    return toast("Code invalide (format).");
+  }
+
+  const did = subscription.deviceId || ensureDeviceId(subscription);
+  const res = await verifySignedActivationCode(code, did);
+
+  if (!res.ok) {
+    const msg =
+      res.reason === "CRYPTO" ? "Activation impossible : navigateur incompatible (crypto)." :
+      res.reason === "SIGNATURE" ? "Code invalide (signature)." :
+      res.reason === "DEVICE" ? "Code invalide (mauvais appareil)." :
+      res.reason === "DAYS" ? "Code invalide (durée)." :
+      "Code invalide.";
+    return toast(msg);
+  }
+
+  const days = Math.max(1, Math.min(3650, Math.floor(Number(res.payload.days))));
+  const plan = safeText(res.payload.plan) || "PRO";
+
+  subscription.lastCode = code;
+  subscription.activatedAt = nowMs();
+  subscription.expiresAt = nowMs() + days * 24 * 3600 * 1000;
+  subscription.plan = plan;        // nouveau champ (OK, ça ne casse rien)
+  subscription.testUntil = 0;      // activation > test
+  saveSubscription(subscription);
+
+  refreshSubUI();
+  toast(`Activation OK ✅ (${days} jour(s) — ${plan})`);
+  applyReadOnlyToPage(document.body.dataset.page || "home");
+});
+
+
+    if (btnTest) btnTest.addEventListener("click", () => {
+      subscription.testUntil = nowMs() + 7 * 24 * 3600 * 1000;
+      saveSubscription(subscription);
+      refreshSubUI();
+      toast("TEST démarré ✅");
+      applyReadOnlyToPage(document.body.dataset.page || "home");
+    });
+
+    if (btnStop) btnStop.addEventListener("click", () => {
+      subscription.testUntil = 0;
+      saveSubscription(subscription);
+      refreshSubUI();
+      toast("TEST arrêté.");
+      applyReadOnlyToPage(document.body.dataset.page || "home");
+    });
+
+    refreshSubUI();
+  }
+
   // Normalisation (compat anciens états)
   (function normalizeState() {
     try {
@@ -281,7 +654,8 @@
     if (pageName === "dashboard") renderDashboard();
     if (pageName === "historique") renderHistorique();
     if (pageName === "config") { renderConfig(); ensureDataManagerUI(); }
-    if (pageName === "abonnement") { ensureDataManagerUI(); }
+    if (pageName === "abonnement") { ensureSubscriptionUI(); ensureDataManagerUI(); }
+    applyReadOnlyToPage(pageName);
   }
 
   // Expose pour les onclick du HTML
@@ -300,6 +674,11 @@
   function applyConfigLabels() {
     const pS = safeText(state.config.produitS) || "produit";
     const pP = safeText(state.config.produitP) || "produits";
+    const brand = safeText(state.config.exemple) || "BusinessFood Manager";
+    const titleEl = document.querySelector(".app-title");
+    if (titleEl) titleEl.textContent = brand;
+    try { document.title = brand ? `${brand} — BusinessFood Manager` : "BusinessFood Manager"; } catch {}
+
 
     if ($("label-dashboard-total")) $("label-dashboard-total").textContent = `Total ${pP} vendus`;
     if ($("label-dashboard-stock")) $("label-dashboard-stock").textContent = `Stock de ${pP} restants`;
@@ -1414,47 +1793,6 @@
      7) Packs
   ========================== */
   let packDraftRows = []; // [{id, recipeId, qty}]
-let editingPackId = null;
-
-function ensurePackCancelButton() {
-  const createBtn = $("btn-add-pack");
-  if (!createBtn) return;
-  if ($("btn-cancel-pack-edit")) return;
-
-  const btn = document.createElement("button");
-  btn.id = "btn-cancel-pack-edit";
-  btn.type = "button";
-  btn.className = "btn btn-secondary";
-  btn.style.marginTop = "8px";
-  btn.style.width = "100%";
-  btn.style.display = "none";
-  btn.textContent = "Annuler la modification";
-
-  createBtn.insertAdjacentElement("afterend", btn);
-}
-
-function setPackFormMode(isEdit) {
-  const createBtn = $("btn-add-pack");
-  if (createBtn) createBtn.textContent = isEdit ? "✅ Mettre à jour le pack" : "➜ Créer le pack";
-  const cancelBtn = $("btn-cancel-pack-edit");
-  if (cancelBtn) cancelBtn.style.display = isEdit ? "inline-block" : "none";
-}
-
-function resetPackForm() {
-  editingPackId = null;
-  if ($("pack-nom")) $("pack-nom").value = "";
-  if ($("pack-price")) $("pack-price").value = "";
-  if ($("pack-margin")) $("pack-margin").value = "30";
-  packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
-  renderPackDraft();
-  setPackFormMode(false);
-}
-
-function cancelPackEdit() {
-  resetPackForm();
-  toast("Édition annulée.");
-}
-
 
   function refreshPackRecipeOptions() {
     // rien à faire ici directement: options sont rendues dans les rows
@@ -1515,13 +1853,6 @@ function cancelPackEdit() {
     }
     return units;
   }
-function updatePackDraftSummary() {
-
-    updatePackDraftSummary();
-
-}
-
-
 
   function renderPackDraft() {
     const tbody = $("pack-items-body");
@@ -1550,47 +1881,21 @@ function updatePackDraftSummary() {
         row.recipeId = sel.value;
         renderPackDraft();
       });
-      tdRec.appendChild(sel);const tdQty = document.createElement("td");
-const tdCost = document.createElement("td");
+      tdRec.appendChild(sel);
 
-const inputQty = el("input", {
-  type: "number",
-  min: "0",
-  step: "1",
-  inputmode: "numeric",
-  pattern: "[0-9]*",
-  value: String(row.qty ?? 1),
-  class: "form-control",
-  style: "max-width:110px;font-size:16px;"
-});
+      const tdQty = document.createElement("td");
+      const inputQty = el("input", { type: "number", min: "1", value: String(row.qty ?? 1), class: "form-control", style: "max-width:110px;" });
+      on(inputQty, "input", () => {
+        row.qty = Math.max(1, Math.floor(toNum(inputQty.value, 1)));
+        renderPackDraft();
+      });
+      tdQty.appendChild(inputQty);
 
-const syncLine = (finalize) => {
-  // IMPORTANT: ne pas rerender à chaque frappe -> sinon sur mobile le clavier se ferme.
-  if (finalize) {
-    const q = Math.max(1, Math.floor(toNum(inputQty.value, 1)));
-    row.qty = q;
-    inputQty.value = String(q);
-  } else {
-    row.qty = inputQty.value; // string possible ("") pendant la saisie
-  }
+      const tdCost = document.createElement("td");
+      const r = getRecipeById(row.recipeId);
+      const lineCost = r ? (toNum(r.costPerUnit, 0) * Math.max(1, Math.floor(toNum(row.qty, 1)))) : 0;
+      tdCost.textContent = money(lineCost);
 
-  const qtyNum = Math.max(0, Math.floor(toNum(row.qty, 0)));
-  const r = getRecipeById(row.recipeId);
-  const lineCost = r ? (toNum(r.costPerUnit, 0) * qtyNum) : 0;
-  tdCost.textContent = money(lineCost);
-
-  updatePackDraftSummary();
-};
-
-on(inputQty, "input", () => syncLine(false));
-on(inputQty, "change", () => syncLine(true));
-on(inputQty, "blur", () => syncLine(true));
-
-tdQty.appendChild(inputQty);
-
-const r = getRecipeById(row.recipeId);
-const lineCost = r ? (toNum(r.costPerUnit, 0) * Math.max(0, Math.floor(toNum(row.qty, 0)))) : 0;
-tdCost.textContent = money(lineCost);
       const tdDel = document.createElement("td");
       const btn = el("button", { type: "button", class: "btn btn-pink" }, ["✖"]);
       on(btn, "click", () => removePackRow(row.id));
@@ -1689,31 +1994,29 @@ tdCost.textContent = money(lineCost);
       : Math.round(toNum(manualPrice, 0));
 
     if (price < cost - 1e-9) return toast("Pack vendu à perte : prix < coût. Corrige le prix.");
-const existing = editingPackId ? state.packs.find(x => x.id === editingPackId) : null;
 
-const pack = {
-  id: existing ? existing.id : uid(),
-  name,
-  items: expanded,
-  cost,
-  margin,
-  price,
-  createdAt: existing ? existing.createdAt : new Date().toISOString()
-};
+    const pack = {
+      id: uid(),
+      name,
+      items: expanded,
+      cost,
+      margin,
+      price,
+      createdAt: new Date().toISOString()
+    };
 
-if (existing) {
-  const idx = state.packs.findIndex(x => x.id === existing.id);
-  if (idx >= 0) state.packs[idx] = pack;
-  else state.packs.push(pack);
-} else {
-  state.packs.push(pack);
-}
+    state.packs.push(pack);
 
-saveState();
-resetPackForm(); // reset + retour mode création
-renderPacks();
-refreshSalePackSelect();
-toast(existing ? "Pack mis à jour ✅" : "Pack créé ✅");
+    // reset draft
+    if ($("pack-nom")) $("pack-nom").value = "";
+    if ($("pack-price")) $("pack-price").value = "";
+    packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
+
+    saveState();
+    renderPackDraft();
+    renderPacks();
+    refreshSalePackSelect();
+    toast("Pack créé ✅");
   }
 
   function deletePack(id) {
@@ -1727,34 +2030,6 @@ toast(existing ? "Pack mis à jour ✅" : "Pack créé ✅");
     refreshSalePackSelect();
     toast("Pack supprimé.");
   }
-
-function startEditPack(id) {
-  const p = state.packs.find(x => x.id === id);
-  if (!p) return toast("Pack introuvable.");
-
-  const used = state.sales.some(s => (s.packs || []).some(pi => pi.packId === id));
-  if (used) {
-    if (!confirm("Ce pack existe déjà dans l'historique des ventes. Le modifier va aussi changer le sens des anciennes ventes. Continuer ?")) return;
-  }
-
-  editingPackId = id;
-
-  if ($("pack-nom")) $("pack-nom").value = p.name || "";
-  if ($("pack-margin")) $("pack-margin").value = String(clamp(toNum(p.margin, 30), 0, 90));
-  if ($("pack-price")) $("pack-price").value = String(toNum(p.price, 0));
-
-  packDraftRows = (p.items || []).map(it => ({
-    id: uid(),
-    recipeId: it.recipeId,
-    qty: Math.max(1, Math.floor(toNum(it.qty, 1)))
-  }));
-  if (!packDraftRows.length) packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
-
-  renderPackDraft();
-  setPackFormMode(true);
-  toast("Mode édition : modifie puis mets à jour ✅");
-}
-
 
   function renderPacks() {
     const box = $("packs-list");
@@ -1781,10 +2056,7 @@ function startEditPack(id) {
                 `Coût : ${money(p.cost)} • Prix : ${money(p.price)} • Marge : ${money(marginAbs)} (${roundSmart(marginPct)}%)`
               ])
             ]),
-            el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" }, [
-              el("button", { class: "btn btn-secondary", type: "button", style: "width:auto;white-space:nowrap;", onclick: () => startEditPack(p.id) }, ["Modifier"]),
-              el("button", { class: "btn btn-pink", type: "button", style: "width:auto;white-space:nowrap;", onclick: () => deletePack(p.id) }, ["Supprimer"])
-            ])
+            el("button", { class: "btn btn-pink", type: "button", onclick: () => deletePack(p.id) }, ["Supprimer"])
           ]),
           el("details", { style: "margin-top:10px;" }, [
             el("summary", {}, ["Voir contenu du pack"]),
@@ -2567,9 +2839,6 @@ function saleUnitsFromPacks() {
     applyConfigLabels();
     ensureRecipeCancelButton();
     setRecipeFormMode(false);
-
-    ensurePackCancelButton();
-    setPackFormMode(false);
   }
 
   function wireEvents() {
@@ -2583,11 +2852,10 @@ function saleUnitsFromPacks() {
 
     on($("btn-pack-add-row"), "click", addPackRow);
     on($("btn-add-pack"), "click", addPack);
-    on($("btn-cancel-pack-edit"), "click", cancelPackEdit);
 
     // Pack: suggestion prix en live (marge -> placeholder)
-    on($("pack-margin"), "input", updatePackDraftSummary);
-    on($("pack-margin"), "change", updatePackDraftSummary);
+    on($("pack-margin"), "input", renderPackDraft);
+    on($("pack-margin"), "change", renderPackDraft);
 
 
     on($("vente-pack-add-btn"), "click", addPackToSaleDraft);
