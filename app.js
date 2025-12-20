@@ -1414,6 +1414,47 @@
      7) Packs
   ========================== */
   let packDraftRows = []; // [{id, recipeId, qty}]
+let editingPackId = null;
+
+function ensurePackCancelButton() {
+  const createBtn = $("btn-add-pack");
+  if (!createBtn) return;
+  if ($("btn-cancel-pack-edit")) return;
+
+  const btn = document.createElement("button");
+  btn.id = "btn-cancel-pack-edit";
+  btn.type = "button";
+  btn.className = "btn btn-secondary";
+  btn.style.marginTop = "8px";
+  btn.style.width = "100%";
+  btn.style.display = "none";
+  btn.textContent = "Annuler la modification";
+
+  createBtn.insertAdjacentElement("afterend", btn);
+}
+
+function setPackFormMode(isEdit) {
+  const createBtn = $("btn-add-pack");
+  if (createBtn) createBtn.textContent = isEdit ? "✅ Mettre à jour le pack" : "➜ Créer le pack";
+  const cancelBtn = $("btn-cancel-pack-edit");
+  if (cancelBtn) cancelBtn.style.display = isEdit ? "inline-block" : "none";
+}
+
+function resetPackForm() {
+  editingPackId = null;
+  if ($("pack-nom")) $("pack-nom").value = "";
+  if ($("pack-price")) $("pack-price").value = "";
+  if ($("pack-margin")) $("pack-margin").value = "30";
+  packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
+  renderPackDraft();
+  setPackFormMode(false);
+}
+
+function cancelPackEdit() {
+  resetPackForm();
+  toast("Édition annulée.");
+}
+
 
   function refreshPackRecipeOptions() {
     // rien à faire ici directement: options sont rendues dans les rows
@@ -1474,6 +1515,13 @@
     }
     return units;
   }
+function updatePackDraftSummary() {
+
+    updatePackDraftSummary();
+
+}
+
+
 
   function renderPackDraft() {
     const tbody = $("pack-items-body");
@@ -1502,21 +1550,47 @@
         row.recipeId = sel.value;
         renderPackDraft();
       });
-      tdRec.appendChild(sel);
+      tdRec.appendChild(sel);const tdQty = document.createElement("td");
+const tdCost = document.createElement("td");
 
-      const tdQty = document.createElement("td");
-      const inputQty = el("input", { type: "number", min: "1", value: String(row.qty ?? 1), class: "form-control", style: "max-width:110px;" });
-      on(inputQty, "input", () => {
-        row.qty = Math.max(1, Math.floor(toNum(inputQty.value, 1)));
-        renderPackDraft();
-      });
-      tdQty.appendChild(inputQty);
+const inputQty = el("input", {
+  type: "number",
+  min: "0",
+  step: "1",
+  inputmode: "numeric",
+  pattern: "[0-9]*",
+  value: String(row.qty ?? 1),
+  class: "form-control",
+  style: "max-width:110px;font-size:16px;"
+});
 
-      const tdCost = document.createElement("td");
-      const r = getRecipeById(row.recipeId);
-      const lineCost = r ? (toNum(r.costPerUnit, 0) * Math.max(1, Math.floor(toNum(row.qty, 1)))) : 0;
-      tdCost.textContent = money(lineCost);
+const syncLine = (finalize) => {
+  // IMPORTANT: ne pas rerender à chaque frappe -> sinon sur mobile le clavier se ferme.
+  if (finalize) {
+    const q = Math.max(1, Math.floor(toNum(inputQty.value, 1)));
+    row.qty = q;
+    inputQty.value = String(q);
+  } else {
+    row.qty = inputQty.value; // string possible ("") pendant la saisie
+  }
 
+  const qtyNum = Math.max(0, Math.floor(toNum(row.qty, 0)));
+  const r = getRecipeById(row.recipeId);
+  const lineCost = r ? (toNum(r.costPerUnit, 0) * qtyNum) : 0;
+  tdCost.textContent = money(lineCost);
+
+  updatePackDraftSummary();
+};
+
+on(inputQty, "input", () => syncLine(false));
+on(inputQty, "change", () => syncLine(true));
+on(inputQty, "blur", () => syncLine(true));
+
+tdQty.appendChild(inputQty);
+
+const r = getRecipeById(row.recipeId);
+const lineCost = r ? (toNum(r.costPerUnit, 0) * Math.max(0, Math.floor(toNum(row.qty, 0)))) : 0;
+tdCost.textContent = money(lineCost);
       const tdDel = document.createElement("td");
       const btn = el("button", { type: "button", class: "btn btn-pink" }, ["✖"]);
       on(btn, "click", () => removePackRow(row.id));
@@ -1615,29 +1689,31 @@
       : Math.round(toNum(manualPrice, 0));
 
     if (price < cost - 1e-9) return toast("Pack vendu à perte : prix < coût. Corrige le prix.");
+const existing = editingPackId ? state.packs.find(x => x.id === editingPackId) : null;
 
-    const pack = {
-      id: uid(),
-      name,
-      items: expanded,
-      cost,
-      margin,
-      price,
-      createdAt: new Date().toISOString()
-    };
+const pack = {
+  id: existing ? existing.id : uid(),
+  name,
+  items: expanded,
+  cost,
+  margin,
+  price,
+  createdAt: existing ? existing.createdAt : new Date().toISOString()
+};
 
-    state.packs.push(pack);
+if (existing) {
+  const idx = state.packs.findIndex(x => x.id === existing.id);
+  if (idx >= 0) state.packs[idx] = pack;
+  else state.packs.push(pack);
+} else {
+  state.packs.push(pack);
+}
 
-    // reset draft
-    if ($("pack-nom")) $("pack-nom").value = "";
-    if ($("pack-price")) $("pack-price").value = "";
-    packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
-
-    saveState();
-    renderPackDraft();
-    renderPacks();
-    refreshSalePackSelect();
-    toast("Pack créé ✅");
+saveState();
+resetPackForm(); // reset + retour mode création
+renderPacks();
+refreshSalePackSelect();
+toast(existing ? "Pack mis à jour ✅" : "Pack créé ✅");
   }
 
   function deletePack(id) {
@@ -1651,6 +1727,34 @@
     refreshSalePackSelect();
     toast("Pack supprimé.");
   }
+
+function startEditPack(id) {
+  const p = state.packs.find(x => x.id === id);
+  if (!p) return toast("Pack introuvable.");
+
+  const used = state.sales.some(s => (s.packs || []).some(pi => pi.packId === id));
+  if (used) {
+    if (!confirm("Ce pack existe déjà dans l'historique des ventes. Le modifier va aussi changer le sens des anciennes ventes. Continuer ?")) return;
+  }
+
+  editingPackId = id;
+
+  if ($("pack-nom")) $("pack-nom").value = p.name || "";
+  if ($("pack-margin")) $("pack-margin").value = String(clamp(toNum(p.margin, 30), 0, 90));
+  if ($("pack-price")) $("pack-price").value = String(toNum(p.price, 0));
+
+  packDraftRows = (p.items || []).map(it => ({
+    id: uid(),
+    recipeId: it.recipeId,
+    qty: Math.max(1, Math.floor(toNum(it.qty, 1)))
+  }));
+  if (!packDraftRows.length) packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
+
+  renderPackDraft();
+  setPackFormMode(true);
+  toast("Mode édition : modifie puis mets à jour ✅");
+}
+
 
   function renderPacks() {
     const box = $("packs-list");
@@ -1677,7 +1781,10 @@
                 `Coût : ${money(p.cost)} • Prix : ${money(p.price)} • Marge : ${money(marginAbs)} (${roundSmart(marginPct)}%)`
               ])
             ]),
-            el("button", { class: "btn btn-pink", type: "button", onclick: () => deletePack(p.id) }, ["Supprimer"])
+            el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" }, [
+              el("button", { class: "btn btn-secondary", type: "button", style: "width:auto;white-space:nowrap;", onclick: () => startEditPack(p.id) }, ["Modifier"]),
+              el("button", { class: "btn btn-pink", type: "button", style: "width:auto;white-space:nowrap;", onclick: () => deletePack(p.id) }, ["Supprimer"])
+            ])
           ]),
           el("details", { style: "margin-top:10px;" }, [
             el("summary", {}, ["Voir contenu du pack"]),
@@ -2460,6 +2567,9 @@ function saleUnitsFromPacks() {
     applyConfigLabels();
     ensureRecipeCancelButton();
     setRecipeFormMode(false);
+
+    ensurePackCancelButton();
+    setPackFormMode(false);
   }
 
   function wireEvents() {
@@ -2473,10 +2583,11 @@ function saleUnitsFromPacks() {
 
     on($("btn-pack-add-row"), "click", addPackRow);
     on($("btn-add-pack"), "click", addPack);
+    on($("btn-cancel-pack-edit"), "click", cancelPackEdit);
 
     // Pack: suggestion prix en live (marge -> placeholder)
-    on($("pack-margin"), "input", renderPackDraft);
-    on($("pack-margin"), "change", renderPackDraft);
+    on($("pack-margin"), "input", updatePackDraftSummary);
+    on($("pack-margin"), "change", updatePackDraftSummary);
 
 
     on($("vente-pack-add-btn"), "click", addPackToSaleDraft);
