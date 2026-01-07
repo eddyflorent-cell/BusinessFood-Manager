@@ -6,7 +6,7 @@
     <title>BusinessFood Manager</title>
 
     <!-- CSS principal -->
-    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="stylesheet" href="style.css?v=4">
 
     <!-- Librairies pour export PDF / capture -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -142,6 +142,11 @@
             id="cfg-exemple"
             placeholder="Ex : Lossi Ananas Menthe Betterave, Beignets fourrés…">
 
+        <label class="inline-check">
+          <input type="checkbox" id="cfg-allow-negative">
+          Autoriser le <strong>stock négatif</strong> (à utiliser seulement si tu sais ce que tu fais)
+        </label>
+
         <button id="btn-save-config" class="btn btn-primary">
             Enregistrer la configuration
         </button>
@@ -174,6 +179,12 @@
         <div class="dash-card">
             <h3>Bénéfice net</h3>
             <p id="dash-benefice-net">0 FCFA</p>
+        </div>
+
+        <!-- Pertes alimentaires (mois) -->
+        <div class="dash-card">
+            <h3>Pertes alimentaires (mois)</h3>
+            <p id="dash-waste-month">0 FCFA</p>
         </div>
 
         <!-- Stock de produits finis restants -->
@@ -318,6 +329,15 @@
             <div class="card">
                 <h3>Créer un nouveau pack</h3>
 
+                <div id="pack-edit-box" class="card hidden" style="margin:10px 0;padding:10px;border-left:6px solid #fbcf33;">
+                    <div><strong>Mode édition</strong> — tu modifies un pack existant.</div>
+                    <div class="small" id="pack-edit-name" style="opacity:.9;margin-top:4px;"></div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                        <button type="button" class="btn btn-secondary" id="btn-pack-cancel-edit">Annuler l’édition</button>
+                    </div>
+                </div>
+
+
                 <label>Nom du pack :</label>
                 <input id="pack-nom" type="text" class="form-control"
                        placeholder="Ex : Formule brunch 10 gaufres + 1 boisson">
@@ -455,40 +475,153 @@
 </section>
 
 <!-- ======================= PAGE : INGRÉDIENTS ======================= -->
+
 <section id="page-ingredients" class="page hidden">
-    <h1>Ingrédients – Stock & Coût</h1>
+  <h1>Ingrédients – Stock pro (Lots, DLC, FIFO)</h1>
+  <div class="card demo-card">
+    <h2>Mode démo (exemples prêts)</h2>
+    <p class="subtitle">
+      Crée un <strong>nouveau profil</strong> “Démo Stock Pro” avec des ingrédients déjà remplis (lots, DLC, entrées + une perte exemple).
+      <br>Ça ne touche pas à ton profil “Principal”.
+    </p>
+    <div class="row" style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button id="btn-seed-demo-stock" class="btn btn-primary" type="button">🎯 Charger les exemples</button>
+      <button id="btn-delete-demo-stock" class="btn btn-light" type="button">🧹 Supprimer le profil Démo</button>
+    </div>
+    <p class="small" style="margin-top:8px;opacity:.9;">
+      Astuce : pour simuler une coupure de courant, ouvre un ingrédient (ex : Poisson) ➜ bouton <strong>🗑 Perte</strong> ➜ motif “Chaîne du froid rompue”.
+    </p>
+  </div>
 
-    <h2>Ajouter un ingrédient au stock</h2>
 
-    <label>Nom de l'ingrédient :</label>
-    <input id="ing-nom" placeholder="Ex : Farine">
+  <div class="card">
+    <h2>Créer une fiche ingrédient</h2>
+    <p class="subtitle">
+      Objectif : une gestion de stock <strong>professionnelle</strong> (traçabilité lots + DLC, FIFO, valorisation).
+      <br>Sur téléphone : tu peux créer la fiche d'abord, puis ajouter les livraisons via le bouton “➕ Réception” dans la carte.
+    </p>
 
-    <label>Prix d'achat (FCFA) :</label>
-    <input type="number" id="ing-prix" min="0" placeholder="Ex : 900">
+    <div class="form-grid stock-master-grid">
+      <div>
+        <label>Nom</label>
+        <input id="ing-nom" placeholder="Ex : Farine">
+      </div>
 
-    <label>Quantité :</label>
-    <input type="number" id="ing-qt" min="0" placeholder="Ex : 1000">
+      <div>
+        <label>Catégorie</label>
+        <select id="ing-cat">
+          <option value="Sec">Sec</option>
+          <option value="Frais">Frais</option>
+          <option value="Surgelé">Surgelé</option>
+          <option value="Liquide">Liquide</option>
+        </select>
+      </div>
 
-    <label>Unité du paquet :</label>
-    <select id="ing-unit">
-        <option value="g">g</option>
-        <option value="kg">kg</option>
-        <option value="ml">ml</option>
-        <option value="l">L</option>
-        <option value="piece">pièce</option>
-        <option value="sachet">sachet</option>
-    </select>
+      <div>
+        <label>Unité cuisine</label>
+        <select id="ing-unite-cuisine">
+          <option value="g">g</option>
+          <option value="kg">kg</option>
+          <option value="ml">ml</option>
+          <option value="l">L</option>
+          <option value="piece">pièce</option>
+        </select>
+      </div>
 
-    <label>Seuil d'alerte (même unité) :</label>
-    <input type="number" id="ing-seuil" min="0" placeholder="Ex : 200">
+      <div>
+        <label>Unité stockage (libre)</label>
+        <input id="ing-unite-stockage" placeholder="Ex : Carton 10kg (optionnel)">
+      </div>
 
-    <button id="btn-add-ingredient" class="btn btn-primary" style="margin-top: 10px;">
-        Ajouter l'ingrédient
+      <div>
+        <label>Ratio conversion (en unité cuisine)</label>
+        <input type="number" id="ing-ratio" min="0" step="0.01" placeholder="Ex : 10000 (si 1 carton = 10 000 g)">
+      </div>
+
+      <div>
+        <label>Stock minimum (alerte)</label>
+        <input type="number" id="ing-min" min="0" step="0.01" placeholder="Ex : 200">
+      </div>
+
+      <div>
+        <label>Stock maximum (anti-surstock)</label>
+        <input type="number" id="ing-max" min="0" step="0.01" placeholder="Ex : 5000">
+      </div>
+    </div>
+
+    <h3 style="margin-top:16px;">Réception (1er lot) — optionnel</h3>
+    <div class="form-grid stock-lot-grid">
+      <div>
+        <label>Quantité reçue</label>
+        <input type="number" id="lot-qt" min="0" step="0.01" placeholder="Ex : 5">
+      </div>
+
+      <div>
+        <label>Unité</label>
+        <select id="lot-unit">
+          <option value="g">g</option>
+          <option value="kg">kg</option>
+          <option value="ml">ml</option>
+          <option value="l">L</option>
+          <option value="piece">pièce</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Prix achat HT (total)</label>
+        <input type="number" id="lot-prix" min="0" step="1" placeholder="Ex : 3500">
+      </div>
+
+      <div>
+        <label>Frais d'approche (transport)</label>
+        <input type="number" id="lot-frais" min="0" step="1" placeholder="Ex : 500">
+      </div>
+
+      <div>
+        <label>DLC</label>
+        <input type="date" id="lot-dlc">
+      </div>
+
+      <div>
+        <label>N° lot fournisseur</label>
+        <input id="lot-num" placeholder="Ex : LOT-123">
+      </div>
+    </div>
+
+    <button id="btn-add-ingredient" class="btn btn-primary" style="margin-top: 12px;">
+      Créer l’ingrédient (et le lot si rempli)
     </button>
+  </div>
 
-    <h2>Stock actuel</h2>
-    <div id="ingredients-list"></div>
+  <div class="card">
+    <h2>Dashboard “Santé du stock”</h2>
+    <div id="stock-summary"></div>
+
+    <div class="divider" style="margin:14px 0;"></div>
+
+    <h3>Export traçabilité (productions)</h3>
+    <p class="small" style="opacity:.9;margin-top:-6px;">
+      Exporte les lots utilisés sur une période (utile en cas de contrôle). Basé sur les <strong>productions enregistrées</strong>.
+    </p>
+    <div class="form-grid" style="grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap:10px;">
+      <div>
+        <label>Du</label>
+        <input type="date" id="trace-from">
+      </div>
+      <div>
+        <label>Au</label>
+        <input type="date" id="trace-to">
+      </div>
+      <div style="display:flex;align-items:flex-end;">
+        <button id="btn-export-trace" class="btn btn-light" type="button" style="width:100%;">Exporter CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>Stock actuel</h2>
+  <div id="ingredients-list" data-role="ingredients-list"></div>
 </section>
+
 
 <!-- ======================= PAGE : VENDEURS ======================= -->
 <section id="page-vendeurs" class="page hidden">

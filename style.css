@@ -32,7 +32,7 @@ section {
     border-radius: 14px;
     box-shadow: 0 4px 10px rgba(0,0,0,0.08);
     width: 95%;
-    max-width: 700px;
+    max-width: 980px;
 }
 
 /* ---------------- INPUTS ---------------- */
@@ -978,4 +978,93 @@ body[data-page="historique"]{  --accent:#a855f7; --accent-soft:rgba(168,85,247,.
 .page .btn.btn-secondary:hover{
   box-shadow: 0 0 0 4px var(--accent-soft) !important;
   border-color: var(--accent) !important;
+}
+
+/* Tables: éviter le tronquage sur mobile */
+.table { width: 100%; }
+.table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table thead, .table tbody, .table tr { display: table; width: 100%; table-layout: fixed; }
+.table-wrapper { -webkit-overflow-scrolling: touch; }
+
+
+/* ===== Stock PRO (V4) ===== */
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:3px 10px;
+  border-radius:999px;
+  font-size:12px;
+  line-height:1.4;
+  border:1px solid rgba(0,0,0,.08);
+  background: rgba(0,0,0,.03);
+}
+.pill-muted{
+  opacity:.85;
+}
+.pill-green{
+  background: rgba(16,185,129,.12);
+  border-color: rgba(16,185,129,.25);
+}
+.pill-orange{
+  background: rgba(245,158,11,.14);
+  border-color: rgba(245,158,11,.25);
+}
+.pill-red{
+  background: rgba(239,68,68,.14);
+  border-color: rgba(239,68,68,.25);
+}
+
+.ingredient-card.stock-green{ border-left: 6px solid rgba(16,185,129,.55); }
+.ingredient-card.stock-orange{ border-left: 6px solid rgba(245,158,11,.55); }
+.ingredient-card.stock-red{ border-left: 6px solid rgba(239,68,68,.55); }
+
+.stock-forms{ margin-top: 10px; }
+.stock-form{
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,.10);
+  background: rgba(0,0,0,.02);
+}
+.stock-form-title{
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.move-line{
+  padding: 8px 0;
+  border-top: 1px dashed rgba(0,0,0,.12);
+}
+.move-line:first-of-type{ border-top: 0; }
+
+.inline-check{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,.10);
+  background: rgba(0,0,0,.02);
+  margin-top: 10px;
+}
+.inline-check input{ margin-top: 3px; }
+
+/* Petit confort mobile */
+@media (max-width: 420px){
+  .btn-mini{ padding: 8px 10px; }
+  .pill{ font-size: 11px; }
+}
+
+
+/* --- Stock Pro: Mode démo --- */
+.demo-card{
+  border-left: 6px solid #00b894;
+}
+.demo-card .btn-primary{
+  background: #00b894;
+  border-color: #00b894;
+}
+.demo-card .btn-primary:hover{
+  filter: brightness(0.95);
 }

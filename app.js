@@ -14,6 +14,19 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const on = (el, evt, fn, opts) => { if (el) el.addEventListener(evt, fn, opts); };
 
+  // Robust container lookup for "Stock actuel" list (supports multiple HTML variants)
+  const getIngredientsListContainer = () => {
+    const ids = ["ingredients-list", "ingredients-stock-list", "stock-current-list", "stock-actuel-list", "stock-ingredients-list"];
+    for (const id of ids) {
+      const el = $(id);
+      if (el) return el;
+    }
+    return document.querySelector('#page-ingredients [data-role="ingredients-list"]')
+        || document.querySelector('#page-ingredients .ingredients-list')
+        || null;
+  };
+
+
   const uid = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
   const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
   const toNum = (v, def = 0) => {
@@ -264,14 +277,17 @@ async function verifySignedActivationCode(code, expectedDid) {
 
 
   const defaultState = () => ({
-    version: 3,
+    version: 4,
     config: {
       activite: "",
       produitS: "produit",
       produitP: "produits",
-      exemple: ""
+      exemple: "",
+      // Stock: autoriser un stock négatif (par défaut NON)
+      allowNegativeStock: false
     },
-    ingredients: [], // {id,name,priceTotal,baseQtyTotal,baseQtyRemaining,baseUnit,displayUnit,alertBaseQty}
+    ingredients: [], // V4: {id,name,categorie,uniteCuisine,uniteStockageLabel,ratioConversion,stockMinimumBase,stockMaximumBase,lots:[...],pmpUnitBase,...}
+    stockMovements: [], // V4: traçabilité (ENTREE, SORTIE, PERTE, INVENTAIRE)
     recipes: [],     // production batches
     packs: [],
     vendors: [],     // {id,name,commissionRaw}
@@ -280,7 +296,7 @@ async function verifySignedActivationCode(code, expectedDid) {
     inventory: { finishedUnits: 0, finishedValue: 0 } // valeur au coût (COGS)
   });
 
-  function loadState(storeKey = getActiveStoreKey()) {
+function loadState(storeKey = getActiveStoreKey()) {
     try {
       const raw = localStorage.getItem(storeKey);
       if (!raw) return defaultState();
@@ -293,6 +309,7 @@ async function verifySignedActivationCode(code, expectedDid) {
         config: { ...base.config, ...(parsed.config || {}) },
         inventory: { ...base.inventory, ...(parsed.inventory || {}) },
         ingredients: Array.isArray(parsed.ingredients) ? parsed.ingredients : [],
+        stockMovements: Array.isArray(parsed.stockMovements) ? parsed.stockMovements : [],
         recipes: Array.isArray(parsed.recipes) ? parsed.recipes : [],
         packs: Array.isArray(parsed.packs) ? parsed.packs : [],
         vendors: Array.isArray(parsed.vendors) ? parsed.vendors : [],
@@ -306,12 +323,127 @@ async function verifySignedActivationCode(code, expectedDid) {
   }
 
   function saveState(storeKey = getActiveStoreKey()) {
-    try { localStorage.setItem(storeKey, JSON.stringify(state));
-      touchProfile(getActiveProfile()?.id || "default"); }
-    catch (e) { console.warn("BFM: saveState error", e); }
+    try {
+      localStorage.setItem(storeKey, JSON.stringify(state));
+      touchProfile(getActiveProfile()?.id || "default");
+    } catch (e) {
+      console.warn("BFM: saveState error", e);
+      toast("⚠️ Sauvegarde impossible (stockage plein ou navigateur).");
+    }
   }
 
   let state = loadState();
+  /* =========================
+     0bis) Migration Stock PRO (V4)
+     - Conserve tes anciennes données, mais les met au nouveau format (lots + mouvements)
+  ========================== */
+
+  function migrateStateToV4() {
+    try {
+      // config
+      state.config = state.config || {};
+      if (typeof state.config.allowNegativeStock !== "boolean") state.config.allowNegativeStock = false;
+
+      if (!Array.isArray(state.stockMovements)) state.stockMovements = [];
+      if (!Array.isArray(state.ingredients)) state.ingredients = [];
+
+      const today = dateISO();
+
+      for (const ing of state.ingredients) {
+        if (!ing) continue;
+
+        // Déjà en V4 ?
+        if (Array.isArray(ing.lots)) {
+          ing.categorie = ing.categorie || "Sec";
+          ing.baseUnit = ing.baseUnit || unitToBaseQty(1, ing.uniteCuisine || ing.displayUnit || "g").baseUnit || "g";
+          ing.uniteCuisine = ing.uniteCuisine || ing.displayUnit || baseUnitDefaultDisplay(ing.baseUnit);
+          ing.displayUnit = ing.displayUnit || ing.uniteCuisine;
+          if (ing.stockMinimumBase == null && ing.alertBaseQty != null) ing.stockMinimumBase = toNum(ing.alertBaseQty, 0);
+          if (ing.stockMaximumBase == null) ing.stockMaximumBase = 0;
+          if (ing.negativeBase == null) ing.negativeBase = 0;
+          if (ing.pmpUnitBase == null) ing.pmpUnitBase = 0;
+
+          ing.lots = ing.lots.map(l => ({
+            idLot: l.idLot || uid(),
+            dateEntree: l.dateEntree || today,
+            dlc: l.dlc || "",
+            quantiteInitialeBase: toNum(l.quantiteInitialeBase ?? l.quantiteInitiale ?? 0, 0),
+            quantiteRestanteBase: toNum(l.quantiteRestanteBase ?? l.quantiteRestante ?? 0, 0),
+            numeroLotFournisseur: safeText(l.numeroLotFournisseur || l.numeroLot || ""),
+            prixAchatHTTotal: Math.round(toNum(l.prixAchatHTTotal ?? l.prixAchat ?? 0, 0)),
+            fraisApprocheTotal: Math.round(toNum(l.fraisApprocheTotal ?? l.fraisApproche ?? 0, 0)),
+            coutRenduUnitaireBase: toNum(l.coutRenduUnitaireBase ?? l.coutRenduUnitaire ?? 0, 0)
+          }));
+          continue;
+        }
+
+        // --- Migration depuis l'ancien format (V3) ---
+        const baseUnit = ing.baseUnit || unitToBaseQty(1, ing.displayUnit || "g").baseUnit || "g";
+
+        const qtyTotal = toNum(ing.baseQtyTotal, 0);
+        const qtyRemaining = toNum(ing.baseQtyRemaining, 0);
+        const priceTotal = Math.round(toNum(ing.priceTotal, 0));
+        const unitCost = qtyTotal > 0 ? (priceTotal / qtyTotal) : 0;
+
+        ing.categorie = "Sec";
+        ing.baseUnit = baseUnit;
+        ing.uniteCuisine = ing.displayUnit || baseUnitDefaultDisplay(baseUnit);
+        ing.uniteStockageLabel = "";
+        ing.ratioConversion = 0;
+
+        ing.dernierPrixAchatHT = priceTotal;
+        ing.fraisApproche = 0;
+        ing.pmpUnitBase = unitCost;
+
+        ing.stockMinimumBase = toNum(ing.alertBaseQty, 0);
+        ing.stockMaximumBase = 0;
+        ing.negativeBase = 0;
+
+        ing.lots = [{
+          idLot: uid(),
+          dateEntree: today,
+          dlc: "",
+          quantiteInitialeBase: qtyTotal,
+          quantiteRestanteBase: qtyRemaining,
+          numeroLotFournisseur: "",
+          prixAchatHTTotal: priceTotal,
+          fraisApprocheTotal: 0,
+          coutRenduUnitaireBase: unitCost
+        }];
+      }
+
+      // Purge: lots terminés depuis plus de 6 mois
+      purgeOldClosedLots(6);
+
+      state.version = 4;
+      saveState();
+    } catch (e) {
+      console.warn("BFM: migrateStateToV4 error", e);
+    }
+  }
+
+  function purgeOldClosedLots(months = 6) {
+    try {
+      const limit = new Date();
+      limit.setMonth(limit.getMonth() - Math.max(1, months));
+      const limitMs = limit.getTime();
+
+      for (const ing of (state.ingredients || [])) {
+        if (!ing?.lots) continue;
+        ing.lots = ing.lots.filter(l => {
+          const rest = toNum(l.quantiteRestanteBase, 0);
+          if (rest > 0) return true;
+          const d = new Date(l.dateEntree || "");
+          const ms = isNaN(d.getTime()) ? Date.now() : d.getTime();
+          return ms >= limitMs; // on garde si pas assez vieux
+        });
+      }
+    } catch (e) {
+      console.warn("BFM: purgeOldClosedLots error", e);
+    }
+  }
+
+
 
   /* =========================
      1bis) Abonnement / Activation (device-wide)
@@ -648,7 +780,7 @@ async function verifySignedActivationCode(code, expectedDid) {
     // rafraîchissements ciblés
     if (pageName === "ingredients") renderIngredients();
     if (pageName === "recettes") { ensureRecipeDeductUI(); refreshRecipeIngredientSelect(); renderRecipes(); }
-    if (pageName === "packs") { refreshPackRecipeOptions(); renderPackDraft(); renderPacks(); refreshSalePackSelect(); }
+    if (pageName === "packs") { refreshPackRecipeOptions(); renderPackDraft(); renderPacks(); refreshSalePackSelect(); updatePackEditUI(); }
     if (pageName === "ventes") { refreshVendorsSelect(); refreshSalePackSelect(); renderSalesOfDay(); }
     if (pageName === "depenses") renderExpenses();
     if (pageName === "dashboard") renderDashboard();
@@ -669,6 +801,7 @@ async function verifySignedActivationCode(code, expectedDid) {
     if ($("cfg-produit-s")) $("cfg-produit-s").value = state.config.produitS || "";
     if ($("cfg-produit-p")) $("cfg-produit-p").value = state.config.produitP || "";
     if ($("cfg-exemple")) $("cfg-exemple").value = state.config.exemple || "";
+    if ($("cfg-allow-negative")) $("cfg-allow-negative").checked = !!state.config.allowNegativeStock;
   }
 
   function applyConfigLabels() {
@@ -864,6 +997,323 @@ async function verifySignedActivationCode(code, expectedDid) {
       showPage("config");
       toast(`Profil créé : ${name} ✅`);
     }
+
+
+    // -----------------------------
+    // Stock Pro — MODE DÉMO (exemples)
+    // -----------------------------
+    function seedDemoStockProfile() {
+      const baseName = "Démo Stock Pro";
+      const existing = (profilesIndex.profiles || []).find(p => (p.name || "") === baseName);
+
+      // Si déjà présent : soit on bascule, soit on réinitialise
+      if (existing) {
+        const reset = confirm(`Le profil "${baseName}" existe déjà.\n\nOK = Réinitialiser les données démo\nAnnuler = Juste basculer dessus`);
+        profilesIndex.current = existing.id;
+        saveProfilesIndex();
+
+        if (reset) {
+          const st = defaultState();
+          fillDemoStockData(st);
+          try { localStorage.setItem(existing.storeKey, JSON.stringify(st)); }
+          catch (e) { console.warn("BFM: demo save error", e); return toast("Impossible d'écrire le profil démo (stockage plein ?)"); }
+        }
+
+        state = loadState(existing.storeKey);
+        initDefaults();
+        ensureDataManagerUI();
+        refreshProfilesUI();
+        renderConfig();
+        showPage("ingredients");
+        try { renderIngredients(); } catch (e) { console.error(e); }
+        // Force refresh "Stock actuel" in case the UI is already on this page
+        try { renderIngredients(); } catch (e) { console.error(e); }
+        toast(`Profil démo chargé ✅`);
+        return;
+      }
+
+      // Sinon : créer un nouveau profil démo (sans toucher au Principal)
+      const id = uid();
+      const storeKey = profileStoreKey(id);
+      const name = baseName;
+
+      const st = defaultState();
+      fillDemoStockData(st);
+
+      try { localStorage.setItem(storeKey, JSON.stringify(st)); }
+      catch (e) { console.warn("BFM: demo create save error", e); return toast("Impossible de créer le profil démo (stockage plein ?)"); }
+
+      profilesIndex.profiles.push({ id, name, storeKey, createdAt: nowISO(), updatedAt: nowISO() });
+      profilesIndex.current = id;
+      saveProfilesIndex();
+
+      state = st;
+      initDefaults();
+      ensureDataManagerUI();
+      refreshProfilesUI();
+      renderConfig();
+      showPage("ingredients");
+      // Force refresh "Stock actuel" after seeding demo profile
+      try { renderIngredients(); } catch (e) { console.error(e); }
+      toast("Profil démo créé ✅");
+    }
+
+    function deleteDemoStockProfile() {
+      const baseName = "Démo Stock Pro";
+      const p = (profilesIndex.profiles || []).find(x => (x.name || "") === baseName);
+      if (!p) return toast("Aucun profil Démo trouvé.");
+
+      const ok = confirm(`Supprimer le profil "${baseName}" ?\n\n⚠️ Ça supprime aussi toutes ses données.`);
+      if (!ok) return;
+
+      // supprimer data
+      try { localStorage.removeItem(profileStoreKey(p.id)); } catch {}
+
+      // retirer index
+      profilesIndex.profiles = (profilesIndex.profiles || []).filter(x => x.id !== p.id);
+      if (!profilesIndex.profiles.length) {
+        profilesIndex.profiles = [{ id: "default", name: "Principal", storeKey: STORE_KEY, createdAt: nowISO(), updatedAt: nowISO() }];
+      }
+      if (profilesIndex.current === p.id) profilesIndex.current = profilesIndex.profiles[0].id;
+      saveProfilesIndex();
+
+      // recharger profil courant
+      state = loadState(getActiveStoreKey());
+      initDefaults();
+      ensureDataManagerUI();
+      refreshProfilesUI();
+      renderConfig();
+      showPage("ingredients");
+      toast("Profil démo supprimé ✅");
+    }
+
+    function fillDemoStockData(st) {
+      // ⚠️ On prépare uniquement le stock pro (ingrédients + lots + mouvements)
+      // Le but : montrer au restaurateur comment remplir + tester FIFO/DLC/pertes.
+      st.config = st.config || {};
+      st.config.activite = st.config.activite || "Démo - Stock alimentaire";
+      st.config.produitS = st.config.produitS || "produit";
+      st.config.produitP = st.config.produitP || "produits";
+
+      st.ingredients = [];
+      st.stockMovements = [];
+
+      const today = new Date();
+      const iso = (d) => {
+        const x = new Date(d);
+        const y = x.getFullYear();
+        const m = String(x.getMonth() + 1).padStart(2, "0");
+        const dd = String(x.getDate()).padStart(2, "0");
+        return `${y}-${m}-${dd}`;
+      };
+      const addDays = (n) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() + n);
+        return d;
+      };
+
+      function mkIng({ name, categorie, uniteCuisine, uniteStockageLabel, ratio, stockMin, stockMax }) {
+        const { baseQty: ratioBase, baseUnit } = unitToBaseQty(Math.max(0, toNum(ratio, 0)), uniteCuisine);
+        const { baseQty: minBase } = unitToBaseQty(Math.max(0, toNum(stockMin, 0)), uniteCuisine);
+        const { baseQty: maxBase } = unitToBaseQty(Math.max(0, toNum(stockMax, 0)), uniteCuisine);
+
+        const ing = {
+          id: uid(),
+          name,
+          categorie,
+          baseUnit,
+          uniteCuisine,
+          displayUnit: uniteCuisine,
+          uniteStockageLabel,
+          ratioConversionBase: ratioBase || 0,
+          stockMinimumBase: minBase || 0,
+          stockMaximumBase: maxBase || 0,
+          dernierPrixAchatHT: 0,
+          fraisApproche: 0,
+          pmpUnitBase: 0,
+          negativeBase: 0,
+          lots: []
+        };
+        st.ingredients.push(ing);
+        return ing;
+      }
+
+      function mkLot(ing, { qty, unit, priceTotal, fraisTotal, dlc, dateEntree, num }) {
+        const { baseQty, baseUnit } = unitToBaseQty(Math.max(0, toNum(qty, 0)), unit || ing.uniteCuisine);
+        if (baseUnit !== ing.baseUnit) return; // incohérence unité, on ignore
+
+        const price = Math.round(toNum(priceTotal, 0));
+        const frais = Math.round(toNum(fraisTotal, 0));
+        const unitCost = baseQty > 0 ? ((price + frais) / baseQty) : 0;
+
+        const lot = {
+          idLot: uid(),
+          dateEntree: dateEntree || iso(today),
+          dlc: dlc || "",
+          quantiteInitialeBase: baseQty,
+          quantiteRestanteBase: baseQty,
+          numeroLotFournisseur: safeText(num || ""),
+          prixAchatHTTotal: price,
+          fraisApprocheTotal: frais,
+          coutRenduUnitaireBase: unitCost
+        };
+
+        ing.lots.push(lot);
+
+        // infos prix + PMP
+        ing.dernierPrixAchatHT = price;
+        ing.fraisApproche = frais;
+        updateIngPmp(ing);
+
+        // mouvement ENTREE
+        st.stockMovements.push({
+          id: uid(),
+          ts: new Date().toISOString(),
+          type: "ENTREE",
+          ingredientId: ing.id,
+          lotId: lot.idLot,
+          qtyBase: baseQty,
+          costTotal: (baseQty * unitCost),
+          motif: "Réception (démo)",
+          meta: { demo: true }
+        });
+
+        return lot;
+      }
+
+      function applyPerte(ing, lot, qty, unit, motif) {
+        const { baseQty, baseUnit } = unitToBaseQty(Math.max(0, toNum(qty, 0)), unit || ing.uniteCuisine);
+        if (baseUnit !== ing.baseUnit) return;
+
+        const q = Math.min(baseQty, toNum(lot.quantiteRestanteBase, 0));
+        if (q <= 0) return;
+
+        lot.quantiteRestanteBase = toNum(lot.quantiteRestanteBase, 0) - q;
+        updateIngPmp(ing);
+
+        st.stockMovements.push({
+          id: uid(),
+          ts: new Date().toISOString(),
+          type: "PERTE",
+          ingredientId: ing.id,
+          lotId: lot.idLot,
+          qtyBase: q,
+          costTotal: (q * toNum(lot.coutRenduUnitaireBase, 0)),
+          motif: motif || "Perte (démo)",
+          meta: { demo: true }
+        });
+      }
+
+      // -----------------------------
+      // Ingrédients (exemples réalistes)
+      // -----------------------------
+
+      // 1) Sec : Farine
+      const farine = mkIng({
+        name: "Farine (T55)",
+        categorie: "Sec",
+        uniteCuisine: "g",
+        uniteStockageLabel: "Sac 25 kg",
+        ratio: 25000,      // 1 sac = 25 000 g
+        stockMin: 5000,    // alerte à 5 kg
+        stockMax: 80000
+      });
+      mkLot(farine, { qty: 10000, unit: "g", priceTotal: 9000, fraisTotal: 1000, dlc: iso(addDays(180)), dateEntree: iso(addDays(-10)), num: "FAR-2401" });
+      mkLot(farine, { qty: 25000, unit: "g", priceTotal: 22000, fraisTotal: 1500, dlc: iso(addDays(240)), dateEntree: iso(addDays(-2)), num: "FAR-2402" });
+
+      // 2) Liquide : Lait
+      const lait = mkIng({
+        name: "Lait",
+        categorie: "Liquide",
+        uniteCuisine: "ml",
+        uniteStockageLabel: "Brique 1 L",
+        ratio: 1000,
+        stockMin: 2000,
+        stockMax: 20000
+      });
+      mkLot(lait, { qty: 12000, unit: "ml", priceTotal: 12000, fraisTotal: 800, dlc: iso(addDays(3)), dateEntree: iso(addDays(-1)), num: "LAI-8811" });
+
+      // 3) Surgelé : Poisson (pour montrer "chaîne du froid")
+      const poisson = mkIng({
+        name: "Poisson (filets)",
+        categorie: "Surgelé",
+        uniteCuisine: "g",
+        uniteStockageLabel: "Carton 5 kg",
+        ratio: 5000,
+        stockMin: 1500,
+        stockMax: 20000
+      });
+      const lotPoisson = mkLot(poisson, { qty: 5000, unit: "g", priceTotal: 25000, fraisTotal: 2500, dlc: iso(addDays(30)), dateEntree: iso(addDays(-15)), num: "POI-7720" });
+
+      // 4) Surgelé : Glace
+      const glace = mkIng({
+        name: "Glace (boules)",
+        categorie: "Surgelé",
+        uniteCuisine: "g",
+        uniteStockageLabel: "Bac 2 kg",
+        ratio: 2000,
+        stockMin: 800,
+        stockMax: 12000
+      });
+      mkLot(glace, { qty: 4000, unit: "g", priceTotal: 14000, fraisTotal: 1000, dlc: iso(addDays(20)), dateEntree: iso(addDays(-4)), num: "GLA-5502" });
+
+      // 5) Frais : Ananas (DLC J-1 pour déclencher l'alerte)
+      const ananas = mkIng({
+        name: "Ananas",
+        categorie: "Frais",
+        uniteCuisine: "g",
+        uniteStockageLabel: "Caisse 10 kg",
+        ratio: 10000,
+        stockMin: 1500,
+        stockMax: 20000
+      });
+      mkLot(ananas, { qty: 4000, unit: "g", priceTotal: 6000, fraisTotal: 700, dlc: iso(addDays(1)), dateEntree: iso(addDays(-1)), num: "ANA-3301" });
+
+      // 6) Frais : Mangue (DLC J-2)
+      const mangue = mkIng({
+        name: "Mangue",
+        categorie: "Frais",
+        uniteCuisine: "g",
+        uniteStockageLabel: "Caisse 8 kg",
+        ratio: 8000,
+        stockMin: 1200,
+        stockMax: 16000
+      });
+      mkLot(mangue, { qty: 3000, unit: "g", priceTotal: 6500, fraisTotal: 600, dlc: iso(addDays(2)), dateEntree: iso(addDays(-1)), num: "MAN-9021" });
+
+      // 7) Frais : Carotte
+      const carotte = mkIng({
+        name: "Carotte",
+        categorie: "Frais",
+        uniteCuisine: "g",
+        uniteStockageLabel: "Sac 5 kg",
+        ratio: 5000,
+        stockMin: 1000,
+        stockMax: 12000
+      });
+      mkLot(carotte, { qty: 5000, unit: "g", priceTotal: 3500, fraisTotal: 500, dlc: iso(addDays(7)), dateEntree: iso(addDays(-2)), num: "CAR-1110" });
+
+      // 8) Frais : Céleri
+      const celeri = mkIng({
+        name: "Céleri",
+        categorie: "Frais",
+        uniteCuisine: "g",
+        uniteStockageLabel: "Botte 1 kg",
+        ratio: 1000,
+        stockMin: 300,
+        stockMax: 6000
+      });
+      mkLot(celeri, { qty: 1500, unit: "g", priceTotal: 2000, fraisTotal: 300, dlc: iso(addDays(5)), dateEntree: iso(addDays(-1)), num: "CEL-7712" });
+
+      // Démo "coupure de courant" : on déclare une PERTE sur le poisson (2 kg jetés)
+      if (lotPoisson) {
+        applyPerte(poisson, lotPoisson, 2000, "g", "Coupure de courant (chaîne du froid rompue)");
+      }
+
+      // Nettoyage/optim (au cas où)
+      purgeOldClosedLots(6);
+    }
+
 
     function renameProfile() {
       const p = getActiveProfile();
@@ -1079,82 +1529,374 @@ async function verifySignedActivationCode(code, expectedDid) {
   /* =========================
      5) Ingrédients
   ========================== */
+  
+  /* =========================
+     5) Ingrédients — Stock PRO (V4)
+     - Lots + DLC + FIFO + Traçabilité + Valorisation
+  ========================== */
+
+  function ingLots(ing) {
+    if (!ing.lots) ing.lots = [];
+    return ing.lots;
+  }
+
+  function ingRemainingBase(ing) {
+    const lots = ingLots(ing);
+    const sumLots = lots.reduce((s, l) => s + toNum(l.quantiteRestanteBase, 0), 0);
+    const neg = toNum(ing.negativeBase, 0);
+    return sumLots - neg; // peut être négatif si autorisé
+  }
+
+  function ingRemainingLotsBase(ing) {
+    return ingLots(ing).reduce((s, l) => s + toNum(l.quantiteRestanteBase, 0), 0);
+  }
+
+  function ingTotalValue(ing) {
+    // Valeur au coût rendu (landed cost) sur les quantités RESTANTES
+    const lots = ingLots(ing);
+    const v = lots.reduce((s, l) => s + (toNum(l.quantiteRestanteBase, 0) * toNum(l.coutRenduUnitaireBase, 0)), 0);
+    return Math.max(0, v);
+  }
+
+  function ingPmpUnitBase(ing) {
+    // Prix moyen pondéré (sur stock restant)
+    const qty = ingRemainingLotsBase(ing);
+    const v = ingTotalValue(ing);
+    if (qty > 0) return v / qty;
+    // fallback
+    return toNum(ing.pmpUnitBase, 0) || 0;
+  }
+
+  function updateIngPmp(ing) {
+    ing.pmpUnitBase = ingPmpUnitBase(ing);
+  }
+
+  function pricePerBaseUnit(ing) {
+    // Compat avec l'ancien code : renvoie le coût unitaire en "baseUnit" (g/ml/pièce)
+    return ingPmpUnitBase(ing);
+  }
+
+  function ingredientStockValue(ing) {
+    return ingTotalValue(ing);
+  }
+
+
+  function ingDisplayUnit(ing) {
+    return ing.displayUnit || ing.uniteCuisine || baseUnitDefaultDisplay(ing.baseUnit || "g");
+  }
+// Fonction d'arrondi intelligent
+function roundSmart(n, decimals = 2) {
+  if (n === 0) return 0;
+  if (Math.abs(n) >= 100) return Math.round(n);
+  if (Math.abs(n) >= 10) return Math.round(n * 10) / 10;
+  return Math.round(n * Math.pow(10, decimals)) / Math.pow(10, decimals);
+}
+
+  function ingredientDisplayQty(baseQty, ing) {
+    const displayUnit = ingDisplayUnit(ing);
+    const display = baseQtyToDisplay(baseQty, ing.baseUnit, displayUnit);
+    return `${roundSmart(display)} ${displayUnit}`;
+  }
+
+  function ingredientDisplayRemaining(ing) {
+    return ingredientDisplayQty(ingRemainingBase(ing), ing);
+  }
+
+  function ingredientDisplayRemainingLotsOnly(ing) {
+    return ingredientDisplayQty(ingRemainingLotsBase(ing), ing);
+  }
+
+  function ingredientDisplayMin(ing) {
+    const v = toNum(ing.stockMinimumBase ?? ing.alertBaseQty ?? 0, 0);
+    if (v <= 0) return "—";
+    return ingredientDisplayQty(v, ing);
+  }
+
+  function ingredientDisplayMax(ing) {
+    const v = toNum(ing.stockMaximumBase ?? 0, 0);
+    if (v <= 0) return "—";
+    return ingredientDisplayQty(v, ing);
+  }
+
+  function recordStockMovement({ type, ingredientId, lotId = null, qtyBase = 0, costTotal = 0, motif = "", meta = {} }) {
+    if (!Array.isArray(state.stockMovements)) state.stockMovements = [];
+    state.stockMovements.push({
+      id: uid(),
+      ts: new Date().toISOString(),
+      type,
+      ingredientId,
+      lotId,
+      qtyBase: toNum(qtyBase, 0),
+      costTotal: toNum(costTotal, 0),
+      motif: safeText(motif || ""),
+      meta
+    });
+  }
+
+  function addStockLot(ingredientId, { qtyBase, priceHTTotal = 0, fraisApprocheTotal = 0, dlc = "", numeroLotFournisseur = "", dateEntree = dateISO() }, motif = "Réception") {
+    const ing = state.ingredients.find(i => i.id === ingredientId);
+    if (!ing) return toast("Ingrédient introuvable.");
+
+    qtyBase = toNum(qtyBase, 0);
+    if (qtyBase <= 0) return toast("Quantité invalide.");
+
+    const price = Math.round(toNum(priceHTTotal, 0));
+    const frais = Math.round(toNum(fraisApprocheTotal, 0));
+    const unitCost = qtyBase > 0 ? ((price + frais) / qtyBase) : 0;
+
+    // Compensation du stock négatif éventuel
+    const neg = Math.max(0, toNum(ing.negativeBase, 0));
+    const offset = Math.min(neg, qtyBase);
+
+    const lot = {
+      idLot: uid(),
+      dateEntree: dateEntree || dateISO(),
+      dlc: dlc || "",
+      quantiteInitialeBase: qtyBase,
+      quantiteRestanteBase: qtyBase - offset,
+      numeroLotFournisseur: safeText(numeroLotFournisseur || ""),
+      prixAchatHTTotal: price,
+      fraisApprocheTotal: frais,
+      coutRenduUnitaireBase: unitCost
+    };
+
+    ingLots(ing).push(lot);
+
+    // Mouvements
+    recordStockMovement({ type: "ENTREE", ingredientId: ing.id, lotId: lot.idLot, qtyBase, costTotal: (qtyBase * unitCost), motif });
+
+    if (offset > 0) {
+      ing.negativeBase = neg - offset;
+      recordStockMovement({ type: "SORTIE", ingredientId: ing.id, lotId: lot.idLot, qtyBase: offset, costTotal: (offset * unitCost), motif: "Compensation stock négatif" });
+    }
+
+    // MAJ infos prix
+    ing.dernierPrixAchatHT = price;
+    ing.fraisApproche = frais;
+    updateIngPmp(ing);
+
+    purgeOldClosedLots(6);
+    saveState();
+    renderIngredients();
+    refreshRecipeIngredientSelect();
+    toast("Lot ajouté ✅");
+  }
+
+  function lotsSortedForFifo(ing) {
+    const lots = [...ingLots(ing)];
+    // FIFO via DLC la plus proche, puis date d'entrée
+    lots.sort((a, b) => {
+      const ad = a.dlc ? new Date(a.dlc).getTime() : Number.POSITIVE_INFINITY;
+      const bd = b.dlc ? new Date(b.dlc).getTime() : Number.POSITIVE_INFINITY;
+      if (ad !== bd) return ad - bd;
+      const ae = new Date(a.dateEntree || "").getTime();
+      const be = new Date(b.dateEntree || "").getTime();
+      return (isNaN(ae) ? 0 : ae) - (isNaN(be) ? 0 : be);
+    });
+    return lots;
+  }
+
+  function consumeFIFO(ingredientId, qtyBase, { type = "SORTIE", motif = "Sortie", meta = {} } = {}) {
+    const ing = state.ingredients.find(i => i.id === ingredientId);
+    if (!ing) return { ok: false, msg: "Ingrédient introuvable." };
+
+    qtyBase = toNum(qtyBase, 0);
+    if (qtyBase <= 0) return { ok: false, msg: "Quantité invalide." };
+
+    const allowNeg = !!state.config.allowNegativeStock;
+
+    // Pré-check si stock négatif interdit
+    if (!allowNeg && ingRemainingLotsBase(ing) < qtyBase - 1e-9) {
+      return { ok: false, msg: `Stock insuffisant pour ${ing.name} (restant ${ingredientDisplayRemainingLotsOnly(ing)})` };
+    }
+
+    let need = qtyBase;
+    let costTotal = 0;
+    const breakdown = [];
+
+    const fifo = lotsSortedForFifo(ing).filter(l => toNum(l.quantiteRestanteBase, 0) > 0);
+
+    for (const lot of fifo) {
+      if (need <= 0) break;
+      const avail = toNum(lot.quantiteRestanteBase, 0);
+      if (avail <= 0) continue;
+
+      const take = Math.min(avail, need);
+      lot.quantiteRestanteBase = avail - take;
+
+      const unitCost = toNum(lot.coutRenduUnitaireBase, 0);
+      const cost = take * unitCost;
+      costTotal += cost;
+
+      breakdown.push({
+        idLot: lot.idLot,
+        qtyBase: take,
+        dlc: lot.dlc || "",
+        numeroLotFournisseur: lot.numeroLotFournisseur || "",
+        coutRenduUnitaireBase: unitCost
+      });
+
+      recordStockMovement({ type, ingredientId: ing.id, lotId: lot.idLot, qtyBase: take, costTotal: cost, motif, meta });
+
+      need -= take;
+    }
+
+    // Si manque et autorisé => stock négatif
+    if (need > 0) {
+      if (allowNeg) {
+        const unitCost = ingPmpUnitBase(ing);
+        const cost = need * unitCost;
+        costTotal += cost;
+        ing.negativeBase = Math.max(0, toNum(ing.negativeBase, 0)) + need;
+
+        breakdown.push({
+          idLot: null,
+          qtyBase: need,
+          dlc: "",
+          numeroLotFournisseur: "",
+          coutRenduUnitaireBase: unitCost
+        });
+
+        recordStockMovement({ type, ingredientId: ing.id, lotId: null, qtyBase: need, costTotal: cost, motif: `${motif} (stock négatif)`, meta });
+        need = 0;
+      } else {
+        return { ok: false, msg: "Stock insuffisant." };
+      }
+    }
+
+    updateIngPmp(ing);
+    purgeOldClosedLots(6);
+    saveState();
+    return { ok: true, costTotal, breakdown };
+  }
+
+  function daysUntil(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    const now = new Date();
+    // normaliser en dates
+    const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const nn = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return Math.round((dd - nn) / 86400000);
+  }
+
+  function ingredientHealthStatus(ing) {
+    // combine: rupture (qty) + urgence DLC
+    const remLots = ingRemainingLotsBase(ing);
+    const min = toNum(ing.stockMinimumBase ?? ing.alertBaseQty ?? 0, 0);
+    const qtyLevel = (min > 0 && remLots <= min + 1e-9) ? "red" : (min > 0 && remLots <= min * 1.3 ? "orange" : "green");
+
+    const soonest = nearestExpiringLot(ing);
+    let dlcLevel = "green";
+    if (soonest && soonest.days != null) {
+      if (soonest.days <= 1) dlcLevel = "red";
+      else if (soonest.days <= 2) dlcLevel = "orange";
+    }
+
+    // worst color wins
+    const rank = { green: 0, orange: 1, red: 2 };
+    return (rank[dlcLevel] > rank[qtyLevel]) ? dlcLevel : qtyLevel;
+  }
+
+  function nearestExpiringLot(ing) {
+    const active = ingLots(ing).filter(l => toNum(l.quantiteRestanteBase, 0) > 0 && l.dlc);
+    if (!active.length) return null;
+    active.sort((a, b) => new Date(a.dlc).getTime() - new Date(b.dlc).getTime());
+    const l = active[0];
+    return { ...l, days: daysUntil(l.dlc) };
+  }
+
   function addIngredient() {
+    // Fiche ingrédient + (optionnel) 1er lot
     const name = safeText($("ing-nom")?.value);
-    const priceTotal = toNum($("ing-prix")?.value, 0);
-    const qty = toNum($("ing-qt")?.value, 0);
-    const unit = $("ing-unit")?.value || "g";
-    const seuil = toNum($("ing-seuil")?.value, 0);
+    const categorie = $("ing-cat")?.value || "Sec";
+    const uniteCuisine = $("ing-unite-cuisine")?.value || ($("ing-unit")?.value || "g"); // compat
+    const uniteStockageLabel = safeText($("ing-unite-stockage")?.value || "");
+    const ratioConv = toNum($("ing-ratio")?.value, 0); // en unité cuisine => converti en base
+    const stockMin = toNum($("ing-min")?.value ?? $("ing-seuil")?.value, 0); // compat
+    const stockMax = toNum($("ing-max")?.value, 0);
 
     if (!name) return toast("Nom ingrédient manquant.");
-    if (priceTotal < 0 || qty <= 0) return toast("Quantité et prix doivent être > 0.");
 
-    const { baseQty, baseUnit } = unitToBaseQty(qty, unit);
-    const { baseQty: alertBaseQty } = unitToBaseQty(seuil, unit); // même unité que saisie
+    const { baseQty: ratioBase, baseUnit } = unitToBaseQty(Math.max(0, ratioConv), uniteCuisine);
+    const { baseQty: minBase } = unitToBaseQty(Math.max(0, stockMin), uniteCuisine);
+    const { baseQty: maxBase } = unitToBaseQty(Math.max(0, stockMax), uniteCuisine);
+
+    // Bloquer doublon exact (même nom)
+    const exists = state.ingredients.some(i => String(i.name).toLowerCase() === String(name).toLowerCase());
+    if (exists && !confirm("Un ingrédient avec ce nom existe déjà. Créer quand même ?")) return;
 
     const ing = {
       id: uid(),
       name,
-      priceTotal: Math.round(priceTotal),
-      baseQtyTotal: baseQty,
-      baseQtyRemaining: baseQty,
+      categorie,
       baseUnit,
-      displayUnit: unit,
-      alertBaseQty: alertBaseQty
+      uniteCuisine: uniteCuisine,
+      displayUnit: uniteCuisine,
+      uniteStockageLabel,
+      ratioConversionBase: ratioBase || 0,
+      stockMinimumBase: minBase || 0,
+      stockMaximumBase: maxBase || 0,
+      dernierPrixAchatHT: 0,
+      fraisApproche: 0,
+      pmpUnitBase: 0,
+      negativeBase: 0,
+      lots: []
     };
 
     state.ingredients.push(ing);
 
-    // reset form
-    if ($("ing-nom")) $("ing-nom").value = "";
-    if ($("ing-prix")) $("ing-prix").value = "";
-    if ($("ing-qt")) $("ing-qt").value = "";
-    if ($("ing-seuil")) $("ing-seuil").value = "";
+    // Optionnel: créer le 1er lot à partir du formulaire "Réception"
+    const lotQty = toNum($("lot-qt")?.value ?? $("ing-qt")?.value, 0);
+    const lotUnit = $("lot-unit")?.value || uniteCuisine;
+    const lotPrix = toNum($("lot-prix")?.value ?? $("ing-prix")?.value, 0);
+    const lotFrais = toNum($("lot-frais")?.value, 0);
+    const lotDlc = $("lot-dlc")?.value || "";
+    const lotNum = safeText($("lot-num")?.value || "");
+    const lotDateEntree = $("lot-date")?.value || dateISO();
 
-    saveState();
-    renderIngredients();
-    refreshRecipeIngredientSelect();
-    toast("Ingrédient ajouté ✅");
-  }
+    if (lotQty > 0) {
+      const { baseQty, baseUnit: lotBaseUnit } = unitToBaseQty(lotQty, lotUnit);
+      if (lotBaseUnit !== ing.baseUnit) {
+        // Ex: tu saisis kg sur un ingrédient liquide en ml (ou l'inverse)
+        state.ingredients = state.ingredients.filter(x => x.id !== ing.id);
+        return toast(`Unité incohérente pour le lot : ${lotUnit} n'est pas compatible avec ${ing.baseUnit}.`);
+      }
+      // Ajout lot
+      const price = Math.round(toNum(lotPrix, 0));
+      const frais = Math.round(toNum(lotFrais, 0));
+      const unitCost = baseQty > 0 ? ((price + frais) / baseQty) : 0;
 
-  function pricePerBaseUnit(ing) {
-    const denom = toNum(ing.baseQtyTotal, 0);
-    if (denom <= 0) return 0;
-    return toNum(ing.priceTotal, 0) / denom;
-  }
+      const lot = {
+        idLot: uid(),
+        dateEntree: lotDateEntree,
+        dlc: lotDlc,
+        quantiteInitialeBase: baseQty,
+        quantiteRestanteBase: baseQty,
+        numeroLotFournisseur: lotNum,
+        prixAchatHTTotal: price,
+        fraisApprocheTotal: frais,
+        coutRenduUnitaireBase: unitCost
+      };
 
-  function ingredientStockValue(ing) {
-    return pricePerBaseUnit(ing) * toNum(ing.baseQtyRemaining, 0);
-  }
+      ing.lots.push(lot);
+      recordStockMovement({ type: "ENTREE", ingredientId: ing.id, lotId: lot.idLot, qtyBase: baseQty, costTotal: baseQty * unitCost, motif: "Création ingrédient (lot initial)" });
 
-  function ingredientDisplayRemaining(ing) {
-    const display = baseQtyToDisplay(ing.baseQtyRemaining, ing.baseUnit, ing.displayUnit || baseUnitDefaultDisplay(ing.baseUnit));
-    const u = ing.displayUnit || baseUnitDefaultDisplay(ing.baseUnit);
-    return `${roundSmart(display)} ${u}`;
-  }
-
-  function ingredientDisplayTotal(ing) {
-    const display = baseQtyToDisplay(ing.baseQtyTotal, ing.baseUnit, ing.displayUnit || baseUnitDefaultDisplay(ing.baseUnit));
-    const u = ing.displayUnit || baseUnitDefaultDisplay(ing.baseUnit);
-    return `${roundSmart(display)} ${u}`;
-  }
-
-  function roundSmart(n) {
-    const v = toNum(n, 0);
-    if (Math.abs(v) >= 100) return String(Math.round(v));
-    return (Math.round(v * 100) / 100).toString().replace(".", ",");
-  }
-
-  function deleteIngredient(id) {
-    const usedInRecipes = state.recipes.some(r => (r.ingredients || []).some(x => x.ingredientId === id));
-    if (usedInRecipes) {
-      if (!confirm("Cet ingrédient apparaît dans des recettes enregistrées. Le supprimer va rendre l'historique moins clair. Continuer ?")) return;
+      ing.dernierPrixAchatHT = price;
+      ing.fraisApproche = frais;
+      updateIngPmp(ing);
     }
-    state.ingredients = state.ingredients.filter(i => i.id !== id);
+
+    // reset form
+    ["ing-nom","ing-unite-stockage","ing-ratio","ing-min","ing-max","ing-prix","ing-qt","ing-seuil","lot-qt","lot-prix","lot-frais","lot-dlc","lot-num"].forEach(id => { if ($(id)) $(id).value = ""; });
+
     saveState();
     renderIngredients();
     refreshRecipeIngredientSelect();
-    toast("Ingrédient supprimé.");
+    renderStockSummary();
+    if (lotQty > 0) toast("Ingrédient + lot enregistrés ✅");
+    else toast("Fiche ingrédient créée ✅ (stock = 0 : pense à ajouter une réception)");
   }
 
   function editIngredient(id) {
@@ -1164,42 +1906,154 @@ async function verifySignedActivationCode(code, expectedDid) {
     const name = prompt("Nom de l'ingrédient :", ing.name);
     if (name == null) return;
 
-    const price = prompt("Prix d'achat total (FCFA) :", String(ing.priceTotal));
-    if (price == null) return;
+    const categorie = prompt("Catégorie (Sec/Frais/Surgelé/Liquide) :", ing.categorie || "Sec");
+    if (categorie == null) return;
 
-    const qtyDisplay = baseQtyToDisplay(ing.baseQtyTotal, ing.baseUnit, ing.displayUnit);
-    const qty = prompt(`Quantité totale (${ing.displayUnit || ing.baseUnit}) :`, String(qtyDisplay));
-    if (qty == null) return;
+    const minDisplay = baseQtyToDisplay(toNum(ing.stockMinimumBase ?? 0,0), ing.baseUnit, ingDisplayUnit(ing));
+    const min = prompt(`Stock minimum (${ingDisplayUnit(ing)}) :`, String(minDisplay));
+    if (min == null) return;
 
-    const remainingDisplay = baseQtyToDisplay(ing.baseQtyRemaining, ing.baseUnit, ing.displayUnit);
-    const remaining = prompt(`Quantité restante (${ing.displayUnit || ing.baseUnit}) :`, String(remainingDisplay));
-    if (remaining == null) return;
-
-    const seuilDisplay = baseQtyToDisplay(ing.alertBaseQty, ing.baseUnit, ing.displayUnit);
-    const seuil = prompt(`Seuil d'alerte (${ing.displayUnit || ing.baseUnit}) :`, String(seuilDisplay));
-    if (seuil == null) return;
-
-    // On conserve l'unité de l'ingrédient telle qu'elle était (displayUnit), et on reconvertit en base
-    const { baseQty: baseQtyTotal, baseUnit } = unitToBaseQty(toNum(qty, 0), ing.displayUnit || ing.baseUnit);
-    const { baseQty: baseQtyRemaining } = unitToBaseQty(clamp(toNum(remaining, 0), 0, toNum(qty, 0)), ing.displayUnit || ing.baseUnit);
-    const { baseQty: alertBaseQty } = unitToBaseQty(toNum(seuil, 0), ing.displayUnit || ing.baseUnit);
+    const maxDisplay = baseQtyToDisplay(toNum(ing.stockMaximumBase ?? 0,0), ing.baseUnit, ingDisplayUnit(ing));
+    const max = prompt(`Stock maximum (${ingDisplayUnit(ing)}) :`, String(maxDisplay));
+    if (max == null) return;
 
     ing.name = safeText(name) || ing.name;
-    ing.priceTotal = Math.max(0, Math.round(toNum(price, ing.priceTotal)));
-    ing.baseQtyTotal = baseQtyTotal;
-    ing.baseQtyRemaining = Math.min(baseQtyRemaining, baseQtyTotal);
-    ing.baseUnit = baseUnit;
-    ing.alertBaseQty = alertBaseQty;
+    ing.categorie = safeText(categorie) || ing.categorie || "Sec";
+
+    const { baseQty: minBase } = unitToBaseQty(Math.max(0, toNum(min, 0)), ingDisplayUnit(ing));
+    const { baseQty: maxBase } = unitToBaseQty(Math.max(0, toNum(max, 0)), ingDisplayUnit(ing));
+    ing.stockMinimumBase = minBase;
+    ing.stockMaximumBase = maxBase;
 
     saveState();
     renderIngredients();
     refreshRecipeIngredientSelect();
+    renderStockSummary();
     toast("Ingrédient modifié ✅");
   }
 
+  function deleteIngredient(id) {
+    const usedInRecipes = state.recipes.some(r => (r.ingredients || []).some(x => x.ingredientId === id));
+    if (usedInRecipes) {
+      if (!confirm("Cet ingrédient apparaît dans des recettes enregistrées. Le supprimer va rendre l'historique moins clair. Continuer ?")) return;
+    }
+    state.ingredients = state.ingredients.filter(i => i.id !== id);
+    // movements purge (optionnel)
+    if (Array.isArray(state.stockMovements)) {
+      state.stockMovements = state.stockMovements.filter(m => m.ingredientId !== id);
+    }
+    saveState();
+    renderIngredients();
+    refreshRecipeIngredientSelect();
+    renderStockSummary();
+    toast("Ingrédient supprimé.");
+  }
+
+  function renderStockSummary() {
+    const box = $("stock-summary");
+    if (!box) return;
+
+    const ings = state.ingredients || [];
+    const totalValue = ings.reduce((s, ing) => s + ingTotalValue(ing), 0);
+    const lowCount = ings.filter(ing => {
+      const min = toNum(ing.stockMinimumBase ?? ing.alertBaseQty ?? 0,0);
+      return min > 0 && ingRemainingLotsBase(ing) <= min + 1e-9;
+    }).length;
+
+    // Gaspillage (PERTE) mois en cours
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const wasteCost = (state.stockMovements || []).filter(x => x.type === "PERTE").reduce((s, x) => {
+      const d = new Date(x.ts || "");
+      if (isNaN(d.getTime())) return s;
+      if (d.getFullYear() !== y || d.getMonth() !== m) return s;
+      return s + toNum(x.costTotal, 0);
+    }, 0);
+
+
+    // DLC J-2 et J-1
+    let j2 = 0, j1 = 0;
+    for (const ing of ings) {
+      for (const lot of ingLots(ing)) {
+        if (toNum(lot.quantiteRestanteBase,0) <= 0) continue;
+        const d = daysUntil(lot.dlc || "");
+        if (d == null) continue;
+        if (d <= 1) j1 += 1;
+        else if (d === 2) j2 += 1;
+      }
+    }
+
+    box.innerHTML = `
+      <div class="dashboard-grid" style="margin-top:10px;">
+        <div class="dash-card"><h3>Valeur stock</h3><p>${money(totalValue)}</p></div>
+        <div class="dash-card"><h3>Ruptures</h3><p>${lowCount}</p></div>
+        <div class="dash-card"><h3>DLC J-1</h3><p>${j1}</p></div>
+        <div class="dash-card"><h3>DLC J-2</h3><p>${j2}</p></div>
+        <div class="dash-card"><h3>Gaspillage (mois)</h3><p>${money(wasteCost)}</p></div>
+      </div>
+      <div class="small" style="opacity:.85;margin-top:8px;">
+        FIFO = lots consommés d'abord avec la DLC la plus proche. Traçabilité via mouvements (ENTREE/SORTIE/PERTE/INVENTAIRE).
+      </div>
+    `;
+  }
+
+  function exportTraceabilityCSV(fromISO, toISO) {
+    const from = fromISO ? new Date(fromISO) : null;
+    const to = toISO ? new Date(toISO) : null;
+
+    // On exporte la traçabilité des PRODUCTIONS (recettes enregistrées)
+    const rows = [];
+    rows.push(["dateProduction","recette","ingredient","lotId","numeroLotFournisseur","dlc","qtyBase","uniteBase"].join(";"));
+
+    for (const r of (state.recipes || [])) {
+      const d = new Date(r.createdAt || r.ts || "");
+      if (from && d < from) continue;
+      if (to) {
+        const toEnd = new Date(to); toEnd.setHours(23,59,59,999);
+        if (d > toEnd) continue;
+      }
+
+      for (const it of (r.ingredients || [])) {
+        const ing = state.ingredients.find(x => x.id === it.ingredientId);
+        const baseUnit = ing?.baseUnit || "g";
+        const lots = Array.isArray(it.lotBreakdown) ? it.lotBreakdown : [];
+        if (!lots.length) {
+          rows.push([safeText(r.createdAt||""), safeText(r.name||""), safeText(it.name||""), "ND", "ND", "ND", String(toNum(it.baseQty,0)), baseUnit].join(";"));
+        } else {
+          for (const b of lots) {
+            rows.push([
+              safeText(r.createdAt||""),
+              safeText(r.name||""),
+              safeText(it.name||""),
+              safeText(b.idLot || "ND"),
+              safeText(b.numeroLotFournisseur || "ND"),
+              safeText(b.dlc || "ND"),
+              String(toNum(b.qtyBase,0)),
+              baseUnit
+            ].join(";"));
+          }
+        }
+      }
+    }
+
+    const csv = rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `BFM-tracabilite_${fromISO||"debut"}_${toISO||"fin"}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+
   function renderIngredients() {
-    const container = $("ingredients-list");
-    if (!container) return;
+    const container = getIngredientsListContainer();
+    if (!container) { console.warn("BFM: ingredients list container not found"); return; }
+
+    try {
+
+    renderStockSummary();
 
     if (!state.ingredients.length) {
       container.innerHTML = "<em>Aucun ingrédient enregistré.</em>";
@@ -1208,46 +2062,292 @@ async function verifySignedActivationCode(code, expectedDid) {
 
     const wrapper = el("div", { class: "bfm-list" });
 
-    // tri : stock faible en premier puis alpha
+    // tri : statut (rouge/orange/vert) puis alpha
+    const rank = { red: 0, orange: 1, green: 2 };
     const list = [...state.ingredients].sort((a, b) => {
-      const aLow = (toNum(a.alertBaseQty, 0) > 0) && (toNum(a.baseQtyRemaining, 0) <= toNum(a.alertBaseQty, 0));
-      const bLow = (toNum(b.alertBaseQty, 0) > 0) && (toNum(b.baseQtyRemaining, 0) <= toNum(b.alertBaseQty, 0));
-      if (aLow !== bLow) return aLow ? -1 : 1;
+      const sa = ingredientHealthStatus(a);
+      const sb = ingredientHealthStatus(b);
+      if (sa !== sb) return rank[sa] - rank[sb];
       return String(a.name).localeCompare(String(b.name), "fr");
     });
 
     for (const ing of list) {
-      const ppu = pricePerBaseUnit(ing);
-      const unitLabel = ing.baseUnit;
+      updateIngPmp(ing);
+      const status = ingredientHealthStatus(ing);
+      const remLots = ingRemainingLotsBase(ing);
+      const neg = Math.max(0, toNum(ing.negativeBase, 0));
+      const minBase = toNum(ing.stockMinimumBase ?? ing.alertBaseQty ?? 0, 0);
 
-      const low = (toNum(ing.alertBaseQty, 0) > 0) && (toNum(ing.baseQtyRemaining, 0) <= toNum(ing.alertBaseQty, 0));
+      const exp = nearestExpiringLot(ing);
+      const expTxt = exp ? `• DLC la + proche : ${exp.dlc} (${exp.days != null ? "J" + (exp.days >= 0 ? "-" + exp.days : "+" + Math.abs(exp.days)) : "?"})` : "";
 
-      const card = el("div", { class: `card ingredient-card${low ? " low" : ""}`, style: "margin:10px 0;" }, [
-        el("div", { class: "row", style: "display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;" }, [
-          el("div", {}, [
-            el("h3", {}, [ing.name]),
-            el("div", { class: "small", style: "opacity:.9;" }, [
-              `Restant : ${ingredientDisplayRemaining(ing)} / ${ingredientDisplayTotal(ing)}`
-            ]),
-            el("div", { class: "small", style: "opacity:.9;" }, [
-              `Prix total : ${money(ing.priceTotal)} • Prix/unité (${unitLabel}) : ${roundSmart(ppu)} FCFA`
-            ]),
-            el("div", { class: "small", style: "opacity:.9;" }, [
-              `Valeur stock : ${money(ingredientStockValue(ing))}${low ? " • ⚠️ Stock bas" : ""}`
-            ])
+      const header = el("div", { class: "row", style: "display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;" }, [
+        el("div", {}, [
+          el("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap;" }, [
+            el("h3", { style: "margin:0;" }, [ing.name]),
+            el("span", { class: `pill pill-${status}` }, [status === "red" ? "Critique" : status === "orange" ? "A surveiller" : "OK"]),
+            el("span", { class: "pill pill-muted" }, [safeText(ing.categorie || "—")])
           ]),
-          el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" }, [
-            el("button", { class: "btn btn-secondary", type: "button", onclick: () => editIngredient(ing.id) }, ["Modifier"]),
-            el("button", { class: "btn btn-pink", type: "button", onclick: () => deleteIngredient(ing.id) }, ["Supprimer"])
+          el("div", { class: "small", style: "opacity:.9;margin-top:4px;" }, [
+            `Restant : ${ingredientDisplayRemainingLotsOnly(ing)} • Min : ${ingredientDisplayMin(ing)} • Max : ${ingredientDisplayMax(ing)} ${expTxt}`
+          ]),
+          (neg > 0) ? el("div", { class: "small", style: "opacity:.95;margin-top:4px;color:#b91c1c;" }, [
+            `⚠ Stock négatif en attente : ${ingredientDisplayQty(neg, ing)}`
+          ]) : null,
+          el("div", { class: "small", style: "opacity:.9;margin-top:4px;" }, [
+            `PMP : ${roundSmart(ingPmpUnitBase(ing))} FCFA/${ing.baseUnit} • Valeur : ${money(ingTotalValue(ing))}`
           ])
+        ].filter(Boolean)),
+        el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" }, [
+          el("button", { class: "btn btn-light btn-mini", type: "button", onclick: () => toggleCardForm(ing.id, "recv") }, ["➕ Réception"]),
+          el("button", { class: "btn btn-light btn-mini", type: "button", onclick: () => toggleCardForm(ing.id, "out") }, ["➖ Sortie"]),
+          el("button", { class: "btn btn-light btn-mini", type: "button", onclick: () => toggleCardForm(ing.id, "waste") }, ["🗑 Perte"]),
+          el("button", { class: "btn btn-light btn-mini", type: "button", onclick: () => toggleCardForm(ing.id, "inv") }, ["📋 Inventaire"]),
+          el("button", { class: "btn btn-secondary btn-mini", type: "button", onclick: () => editIngredient(ing.id) }, ["✎ Fiche"]),
+          el("button", { class: "btn btn-pink btn-mini", type: "button", onclick: () => deleteIngredient(ing.id) }, ["Suppr."])
         ])
       ]);
+
+      const forms = el("div", { class: "stock-forms" }, [
+        renderFormReception(ing),
+        renderFormSortie(ing),
+        renderFormPerte(ing),
+        renderFormInventaire(ing),
+        renderFormHistory(ing)
+      ]);
+
+      const card = el("div", { class: `card ingredient-card stock-${status}`, style: "margin:10px 0;", "data-ing": ing.id }, [header, forms]);
 
       wrapper.appendChild(card);
     }
 
     container.innerHTML = "";
     container.appendChild(wrapper);
+    } catch (e) {
+      console.error("BFM: renderIngredients error", e);
+      container.innerHTML = "<div class=\"card\" style=\"padding:12px;\"><strong>Erreur d\u2019affichage du stock.</strong><div class=\"small\" style=\"margin-top:6px;opacity:.85;\">Ouvre la console pour voir le d\u00e9tail (ou recharge l\u2019app).</div></div>";
+    }
+  }
+
+  function toggleCardForm(ingId, form) {
+    const root = document.querySelector(`[data-ing="${ingId}"]`);
+    if (!root) return;
+
+    // ferme tout
+    root.querySelectorAll(".stock-form").forEach(elm => elm.classList.add("hidden"));
+    const target = root.querySelector(`.stock-form[data-form="${form}"]`);
+    if (target) {
+      target.classList.toggle("hidden");
+      // Toujours afficher l'historique sous les formulaires ouverts
+      const h = root.querySelector('.stock-form[data-form="hist"]');
+      if (h) h.classList.remove("hidden");
+    }
+  }
+
+  function renderFormReception(ing) {
+    const wrap = el("div", { class: "stock-form hidden", "data-form": "recv" }, []);
+    wrap.dataset.form = "recv";
+    wrap.dataset.ing = ing.id; // pas utilisé ici
+    wrap.innerHTML = `
+      <div class="stock-form-title">Réception (nouveau lot)</div>
+      <div class="form-grid" style="grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap:10px;">
+        <div><label>Quantité</label><input type="number" min="0" step="0.01" id="recv-qty-${ing.id}" placeholder="ex: 5"></div>
+        <div><label>Unité</label>
+          <select id="recv-unit-${ing.id}">
+            <option value="g">g</option><option value="kg">kg</option>
+            <option value="ml">ml</option><option value="l">L</option>
+            <option value="piece">pièce</option>
+          </select>
+        </div>
+        <div><label>Prix achat HT (total)</label><input type="number" min="0" step="1" id="recv-price-${ing.id}" placeholder="ex: 3500"></div>
+        <div><label>Frais approche (total)</label><input type="number" min="0" step="1" id="recv-fees-${ing.id}" placeholder="ex: 500"></div>
+        <div><label>DLC</label><input type="date" id="recv-dlc-${ing.id}"></div>
+        <div><label>N° lot fournisseur</label><input id="recv-lotno-${ing.id}" placeholder="ex: LOT-123"></div>
+      </div>
+      <button class="btn btn-primary" type="button" id="btn-recv-${ing.id}">Valider réception</button>
+    `;
+    // container dataset for toggle lookup
+    const outer = el("div", { "data-ing": ing.id }, [wrap]);
+    // hack: outer wrapper for toggle query
+    // On renverra outer et on y appendra d'autres forms plus bas, donc ici on renvoie juste wrap
+    // => On ne fait pas outer ici. (la recherche [data-ing] est sur le card via renderFormHistory)
+    setTimeout(() => {
+      const btn = document.getElementById(`btn-recv-${ing.id}`);
+      if (btn) btn.onclick = () => {
+        const qty = toNum(document.getElementById(`recv-qty-${ing.id}`)?.value, 0);
+        const unit = document.getElementById(`recv-unit-${ing.id}`)?.value || ingDisplayUnit(ing);
+        const price = toNum(document.getElementById(`recv-price-${ing.id}`)?.value, 0);
+        const fees = toNum(document.getElementById(`recv-fees-${ing.id}`)?.value, 0);
+        const dlc = document.getElementById(`recv-dlc-${ing.id}`)?.value || "";
+        const lotNo = safeText(document.getElementById(`recv-lotno-${ing.id}`)?.value || "");
+        const { baseQty, baseUnit } = unitToBaseQty(qty, unit);
+        if (baseUnit !== ing.baseUnit) return toast(`Unité incohérente : ${unit} vs ${ing.baseUnit}.`);
+        addStockLot(ing.id, { qtyBase: baseQty, priceHTTotal: price, fraisApprocheTotal: fees, dlc, numeroLotFournisseur: lotNo }, "Réception");
+      };
+    }, 0);
+    return wrap;
+  }
+
+  function renderFormSortie(ing) {
+    const wrap = el("div", { class: "stock-form hidden", "data-form": "out" }, []);
+    wrap.dataset.form = "out";
+    wrap.innerHTML = `
+      <div class="stock-form-title">Sortie manuelle</div>
+      <div class="form-grid" style="grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap:10px;">
+        <div><label>Quantité</label><input type="number" min="0" step="0.01" id="out-qty-${ing.id}" placeholder="ex: 250"></div>
+        <div><label>Unité</label>
+          <select id="out-unit-${ing.id}">
+            <option value="g">g</option><option value="kg">kg</option>
+            <option value="ml">ml</option><option value="l">L</option>
+            <option value="piece">pièce</option>
+          </select>
+        </div>
+        <div style="grid-column:1/-1;"><label>Motif</label><input id="out-motif-${ing.id}" placeholder="ex: utilisation interne"></div>
+      </div>
+      <button class="btn btn-primary" type="button" id="btn-out-${ing.id}">Valider sortie</button>
+    `;
+    setTimeout(() => {
+      const btn = document.getElementById(`btn-out-${ing.id}`);
+      if (btn) btn.onclick = () => {
+        const qty = toNum(document.getElementById(`out-qty-${ing.id}`)?.value, 0);
+        const unit = document.getElementById(`out-unit-${ing.id}`)?.value || ingDisplayUnit(ing);
+        const motif = safeText(document.getElementById(`out-motif-${ing.id}`)?.value || "Sortie manuelle");
+        const { baseQty, baseUnit } = unitToBaseQty(qty, unit);
+        if (baseUnit !== ing.baseUnit) return toast(`Unité incohérente : ${unit} vs ${ing.baseUnit}.`);
+        const res = consumeFIFO(ing.id, baseQty, { type: "SORTIE", motif });
+        if (!res.ok) return toast(res.msg);
+        toast("Sortie enregistrée ✅");
+        renderIngredients();
+      };
+    }, 0);
+    return wrap;
+  }
+
+  function renderFormPerte(ing) {
+    const wrap = el("div", { class: "stock-form hidden", "data-form": "waste" }, []);
+    wrap.dataset.form = "waste";
+    wrap.innerHTML = `
+      <div class="stock-form-title">Perte / Gaspillage (waste)</div>
+      <div class="form-grid" style="grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap:10px;">
+        <div><label>Quantité</label><input type="number" min="0" step="0.01" id="waste-qty-${ing.id}" placeholder="ex: 100"></div>
+        <div><label>Unité</label>
+          <select id="waste-unit-${ing.id}">
+            <option value="g">g</option><option value="kg">kg</option>
+            <option value="ml">ml</option><option value="l">L</option>
+            <option value="piece">pièce</option>
+          </select>
+        </div>
+        <div style="grid-column:1/-1;"><label>Motif</label><input id="waste-motif-${ing.id}" placeholder="ex: périmé / casse"></div>
+      </div>
+      <button class="btn btn-danger" type="button" id="btn-waste-${ing.id}">Déclarer perte</button>
+    `;
+    setTimeout(() => {
+      const btn = document.getElementById(`btn-waste-${ing.id}`);
+      if (btn) btn.onclick = () => {
+        const qty = toNum(document.getElementById(`waste-qty-${ing.id}`)?.value, 0);
+        const unit = document.getElementById(`waste-unit-${ing.id}`)?.value || ingDisplayUnit(ing);
+        const motif = safeText(document.getElementById(`waste-motif-${ing.id}`)?.value || "Perte");
+        const { baseQty, baseUnit } = unitToBaseQty(qty, unit);
+        if (baseUnit !== ing.baseUnit) return toast(`Unité incohérente : ${unit} vs ${ing.baseUnit}.`);
+        const res = consumeFIFO(ing.id, baseQty, { type: "PERTE", motif });
+        if (!res.ok) return toast(res.msg);
+        toast("Perte enregistrée ✅");
+        renderIngredients();
+      };
+    }, 0);
+    return wrap;
+  }
+
+  function renderFormInventaire(ing) {
+    const wrap = el("div", { class: "stock-form hidden", "data-form": "inv" }, []);
+    wrap.dataset.form = "inv";
+    wrap.innerHTML = `
+      <div class="stock-form-title">Inventaire (stock physique)</div>
+      <div class="form-grid" style="grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap:10px;">
+        <div><label>Stock physique</label><input type="number" min="0" step="0.01" id="inv-qty-${ing.id}" placeholder="ex: 350"></div>
+        <div><label>Unité</label>
+          <select id="inv-unit-${ing.id}">
+            <option value="g">g</option><option value="kg">kg</option>
+            <option value="ml">ml</option><option value="l">L</option>
+            <option value="piece">pièce</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" type="button" id="btn-inv-${ing.id}">Valider inventaire</button>
+      <div class="small" style="opacity:.85;margin-top:6px;">Le système calcule l'écart avec le stock théorique (lots) et ajuste automatiquement.</div>
+    `;
+    setTimeout(() => {
+      const btn = document.getElementById(`btn-inv-${ing.id}`);
+      if (btn) btn.onclick = () => {
+        const phys = toNum(document.getElementById(`inv-qty-${ing.id}`)?.value, 0);
+        const unit = document.getElementById(`inv-unit-${ing.id}`)?.value || ingDisplayUnit(ing);
+        const { baseQty, baseUnit } = unitToBaseQty(phys, unit);
+        if (baseUnit !== ing.baseUnit) return toast(`Unité incohérente : ${unit} vs ${ing.baseUnit}.`);
+
+        const theoretical = ingRemainingLotsBase(ing);
+        const delta = baseQty - theoretical;
+
+        if (Math.abs(delta) < 1e-9) {
+          recordStockMovement({ type: "INVENTAIRE", ingredientId: ing.id, lotId: null, qtyBase: 0, costTotal: 0, motif: "Inventaire (aucun écart)" });
+          saveState();
+          toast("Inventaire OK ✅");
+          return renderIngredients();
+        }
+
+        if (delta < 0) {
+          // Stock physique < théorique => on retire en FIFO
+          const res = consumeFIFO(ing.id, Math.abs(delta), { type: "INVENTAIRE", motif: "Ajustement inventaire (manquant)" });
+          if (!res.ok) return toast(res.msg);
+          toast("Inventaire ajusté (manquant) ✅");
+        } else {
+          // Stock physique > théorique => on ajoute un lot d'ajustement (au PMP)
+          const unitCost = ingPmpUnitBase(ing);
+          const lot = {
+            idLot: uid(),
+            dateEntree: dateISO(),
+            dlc: "",
+            quantiteInitialeBase: delta,
+            quantiteRestanteBase: delta,
+            numeroLotFournisseur: "INVENTAIRE",
+            prixAchatHTTotal: 0,
+            fraisApprocheTotal: 0,
+            coutRenduUnitaireBase: unitCost
+          };
+          ingLots(ing).push(lot);
+          recordStockMovement({ type: "INVENTAIRE", ingredientId: ing.id, lotId: lot.idLot, qtyBase: delta, costTotal: delta * unitCost, motif: "Ajustement inventaire (surplus)" });
+          updateIngPmp(ing);
+          saveState();
+          toast("Inventaire ajusté (surplus) ✅");
+        }
+
+        purgeOldClosedLots(6);
+        renderIngredients();
+      };
+    }, 0);
+    return wrap;
+  }
+
+  function renderFormHistory(ing) {
+    const wrap = el("div", { class: "stock-form", "data-form": "hist" }, []);
+    wrap.dataset.form = "hist";
+    wrap.dataset.ing = ing.id; // important pour toggle
+    const moves = (state.stockMovements || []).filter(m => m.ingredientId === ing.id)
+      .sort((a,b)=> new Date(b.ts).getTime() - new Date(a.ts).getTime())
+      .slice(0, 8);
+
+    if (!moves.length) {
+      wrap.innerHTML = `<div class="stock-form-title">Historique</div><div class="small" style="opacity:.85;">Aucun mouvement.</div>`;
+      return wrap;
+    }
+
+    const lines = moves.map(m => {
+      const sign = (m.type === "ENTREE") ? "+" : "-";
+      const lot = m.lotId ? `lot ${m.lotId}` : "lot ND";
+      return `<div class="move-line"><strong>${m.type}</strong> • ${sign}${roundSmart(m.qtyBase)} ${ing.baseUnit} • ${money(m.costTotal)} • ${lot}<br><span class="small" style="opacity:.8;">${safeText(m.motif||"")}</span></div>`;
+    }).join("");
+
+    wrap.innerHTML = `<div class="stock-form-title">Historique (8 derniers)</div>${lines}`;
+    return wrap;
   }
 
   function refreshRecipeIngredientSelect() {
@@ -1407,20 +2507,87 @@ async function verifySignedActivationCode(code, expectedDid) {
     toast("Modification annulée.");
   }
 
+  
+function restoreStockFromBreakdown(ing, breakdown, motif = "Rollback production") {
+    if (!ing) return;
+    const parts = Array.isArray(breakdown) ? breakdown : [];
+
+    for (const b of parts) {
+      const qty = toNum(b.qtyBase, 0);
+      if (qty <= 0) continue;
+
+      if (!b.idLot) {
+        // C'était du négatif
+        ing.negativeBase = Math.max(0, toNum(ing.negativeBase, 0) - qty);
+        recordStockMovement({ type: "ENTREE", ingredientId: ing.id, lotId: null, qtyBase: qty, costTotal: qty * toNum(b.coutRenduUnitaireBase, 0), motif: `${motif} (annule négatif)` });
+        continue;
+      }
+
+      const lot = ingLots(ing).find(l => l.idLot === b.idLot);
+      if (lot) {
+        lot.quantiteRestanteBase = toNum(lot.quantiteRestanteBase, 0) + qty;
+        recordStockMovement({ type: "ENTREE", ingredientId: ing.id, lotId: lot.idLot, qtyBase: qty, costTotal: qty * toNum(b.coutRenduUnitaireBase, lot.coutRenduUnitaireBase || 0), motif });
+      } else {
+        // Si le lot n'existe plus (purge), on recrée un lot "restauration"
+        const recreated = {
+          idLot: uid(),
+          dateEntree: dateISO(),
+          dlc: b.dlc || "",
+          quantiteInitialeBase: qty,
+          quantiteRestanteBase: qty,
+          numeroLotFournisseur: b.numeroLotFournisseur || "RESTORE",
+          prixAchatHTTotal: 0,
+          fraisApprocheTotal: 0,
+          coutRenduUnitaireBase: toNum(b.coutRenduUnitaireBase, 0)
+        };
+        ingLots(ing).push(recreated);
+        recordStockMovement({ type: "ENTREE", ingredientId: ing.id, lotId: recreated.idLot, qtyBase: qty, costTotal: qty * toNum(recreated.coutRenduUnitaireBase, 0), motif: `${motif} (lot recréé)` });
+      }
+    }
+
+    updateIngPmp(ing);
+  }
+
   function rollbackRecipeProduction(r) {
     // Rendre les ingrédients consommés (uniquement si la prod a réellement décrémenté le stock)
     if (r.deductStock !== false) {
       for (const it of (r.ingredients || [])) {
-      const ing = state.ingredients.find(i => i.id === it.ingredientId);
-      if (ing) {
-        ing.baseQtyRemaining = Math.min(toNum(ing.baseQtyTotal, 0), toNum(ing.baseQtyRemaining, 0) + toNum(it.baseQty, 0));
+        const ing = state.ingredients.find(i => i.id === it.ingredientId);
+        if (!ing) continue;
+
+        if (Array.isArray(it.lotBreakdown) && it.lotBreakdown.length) {
+          restoreStockFromBreakdown(ing, it.lotBreakdown, `Annulation production: ${r.name || ""}`);
+        } else {
+          // Anciennes recettes: pas de détail lot => on recrée un lot d'ajustement
+          const qty = toNum(it.baseQty, 0);
+          if (qty > 0) {
+            const unitCost = ingPmpUnitBase(ing);
+            const lot = {
+              idLot: uid(),
+              dateEntree: dateISO(),
+              dlc: "",
+              quantiteInitialeBase: qty,
+              quantiteRestanteBase: qty,
+              numeroLotFournisseur: "ROLLBACK",
+              prixAchatHTTotal: 0,
+              fraisApprocheTotal: 0,
+              coutRenduUnitaireBase: unitCost
+            };
+            ingLots(ing).push(lot);
+            recordStockMovement({ type: "INVENTAIRE", ingredientId: ing.id, lotId: lot.idLot, qtyBase: qty, costTotal: qty * unitCost, motif: `Annulation production (ancien format): ${r.name || ""}` });
+          }
+        }
       }
+      purgeOldClosedLots(6);
+      saveState();
     }
-    }
+
     // Retirer les produits finis associés (unités + valeur au coût de cette production)
     state.inventory.finishedUnits = Math.max(0, toNum(state.inventory.finishedUnits, 0) - toNum(r.producedQty, 0));
     state.inventory.finishedValue = Math.max(0, toNum(state.inventory.finishedValue, 0) - toNum(r.costTotal, 0));
   }
+
+
 
 
   function addIngredientToRecipeDraft() {
@@ -1514,175 +2681,121 @@ async function verifySignedActivationCode(code, expectedDid) {
       if (!ing) { batchesPossible = 0; break; }
       const req = toNum(it.baseQty, 0);
       if (req <= 0) continue;
-      batchesPossible = Math.min(batchesPossible, Math.floor(toNum(ing.baseQtyRemaining, 0) / req));
+      batchesPossible = Math.min(batchesPossible, Math.floor(ingRemainingLotsBase(ing) / req));
     }
     if (!Number.isFinite(batchesPossible)) batchesPossible = 0;
     return Math.max(0, batchesPossible * produced);
   }
 
   
-  function saveRecipeProduction() {
+  
+function saveRecipeProduction() {
     ensureRecipeCancelButton();
 
     const name = safeText($("rec-nom")?.value);
-    const producedQty = Math.floor(toNum($("rec-nb-gaufres")?.value, 0));
+    const producedQtyBatch = Math.floor(toNum($("rec-nb-gaufres")?.value, 0));
     const salePrice = Math.round(toNum($("rec-prix-vente")?.value, 0));
 
-    // Option (V1): déduire le stock ingrédients + multiplicateur xN
+    // Option: déduire le stock ingrédients + multiplicateur xN
     const deductStock = $("rec-deduct-stock") ? !!$("rec-deduct-stock").checked : true;
     const mult = Math.max(1, Math.min(10, Math.floor(toNum($("rec-deduct-mult")?.value, 1))));
 
     if (!name) return toast("Nom de recette manquant.");
-    if (producedQty <= 0) return toast("Nombre de produits finis invalide.");
+    if (producedQtyBatch <= 0) return toast("Nombre de produits finis invalide.");
     if (!recipeDraft.length) return toast("Ajoute au moins un ingrédient.");
 
-    // Édition ?
+    const producedTotal = producedQtyBatch * mult;
+
+    // Si on édite une production existante : rollback d'abord (ça remet le stock + retire les produits finis)
+    let recipe = null;
     if (editingRecipeId) {
-      const r = state.recipes.find(x => x.id === editingRecipeId);
-      if (!r) { editingRecipeId = null; setRecipeFormMode(false); return toast("Recette introuvable."); }
-
-      // Si production déjà utilisée, on verrouille ingrédients + quantités
-      if (recipeIsUsed(r)) {
-        r.name = name;
-        r.salePrice = salePrice;
-      r.deductStock = (r.deductStock !== false);
-        r.updatedAt = new Date().toISOString();
-        saveState();
-        renderRecipes();
-        refreshPackRecipeOptions();
-        refreshSalePackSelect();
-        renderDashboard();
-        toast("Recette mise à jour (Nom + Prix) ✅");
-        cancelEditRecipe();
-        return;
+      recipe = state.recipes.find(x => x.id === editingRecipeId);
+      if (!recipe) {
+        toast("Production introuvable (édition annulée).");
+        editingRecipeId = null;
+      } else {
+        rollbackRecipeProduction(recipe);
       }
+    }
 
-      // Sinon: on peut modifier complètement => rollback puis re-apply
-      rollbackRecipeProduction(r);
-
-      const deductStockEdit = (r.deductStock !== false);
-
-      // Vérifier stock dispo pour la nouvelle version (si cette production décrémente le stock)
-      if (deductStockEdit) {
-        for (const it of recipeDraft) {
+    // Pré-check stock (si déduction active ET stock négatif interdit)
+    if (deductStock && !state.config.allowNegativeStock) {
+      for (const it of recipeDraft) {
         const ing = state.ingredients.find(i => i.id === it.ingredientId);
         if (!ing) return toast(`Ingrédient manquant : ${it.name}`);
         const needBase = toNum(it.baseQty, 0) * mult;
-      if (toNum(ing.baseQtyRemaining, 0) < needBase - 1e-9) {
-          return toast(`Stock insuffisant pour : ${ing.name} (restant ${ingredientDisplayRemaining(ing)})`);
+        if (ingRemainingLotsBase(ing) < needBase - 1e-9) {
+          return toast(`Stock insuffisant pour : ${ing.name} (restant ${ingredientDisplayRemainingLotsOnly(ing)})`);
         }
       }
-
-      }
-
-      // Déduire stock + calcul coût
-      let costTotal = 0;
-      for (const it of recipeDraft) {
-        const ing = state.ingredients.find(i => i.id === it.ingredientId);
-        const needBase = toNum(it.baseQty, 0) * mult;
-      const cost = pricePerBaseUnit(ing) * needBase;
-        costTotal += cost;
-        if (deductStockEdit) {
-          if (deductStock) {
-        ing.baseQtyRemaining = Math.max(0, toNum(ing.baseQtyRemaining, 0) - needBase);
-      }
-      // Enregistrer les quantités consommées pour cette production (xN)
-      it.baseQty = needBase;
-      it.qtyEntered = toNum(it.qtyEntered, 0) * mult;
-        }
-        it.cost = cost;
-      }
-
-      const costPerUnit = costTotal / producedTotal;
-
-      // Mettre à jour la recette existante
-      r.name = name;
-      r.producedQty = producedQty;
-      r.salePrice = salePrice;
-      r.ingredients = recipeDraft.map(x => ({
-        ingredientId: x.ingredientId,
-        name: x.name,
-        qtyEntered: x.qtyEntered,
-        unitEntered: x.unitEntered,
-        baseQty: x.baseQty,
-        cost: x.cost
-      }));
-      r.costTotal = costTotal;
-      r.costPerUnit = costPerUnit;
-      r.remainingQty = producedQty; // pas utilisée => stock "plein"
-      r.updatedAt = new Date().toISOString();
-
-      // Ajouter à l'inventaire (valeur au coût)
-      state.inventory.finishedUnits += producedTotal;
-      state.inventory.finishedValue += costTotal;
-
-      // reset draft + UI
-      recipeDraft = [];
-      renderRecipeDraftList();
-
-      saveState();
-      renderIngredients();
-      renderRecipes();
-      refreshPackRecipeOptions();
-      refreshSalePackSelect();
-      renderDashboard();
-      toast("Recette (production) modifiée ✅");
-      cancelEditRecipe();
-      return;
     }
 
-    // --- Création (mode normal) ---
-    const producedTotal = producedQty * mult;
-
-    // Vérifier stock dispo (si déduction activée)
-    if (deductStock) {
-      for (const it of recipeDraft) {
-      const ing = state.ingredients.find(i => i.id === it.ingredientId);
-      if (!ing) return toast(`Ingrédient manquant : ${it.name}`);
-      if (toNum(ing.baseQtyRemaining, 0) < toNum(it.baseQty, 0) - 1e-9) {
-        return toast(`Stock insuffisant pour : ${ing.name} (restant ${ingredientDisplayRemaining(ing)})`);
-      }
-    }
-
-    }
-
-    // Déduire stock (optionnel) et calculer coût total
+    // Calcul coût + (optionnel) déduction FIFO
     let costTotal = 0;
+    const ingredientsFinal = [];
+
     for (const it of recipeDraft) {
       const ing = state.ingredients.find(i => i.id === it.ingredientId);
-      const cost = pricePerBaseUnit(ing) * toNum(it.baseQty, 0);
+      if (!ing) return toast(`Ingrédient manquant : ${it.name}`);
+
+      const needBase = toNum(it.baseQty, 0) * mult;
+
+      let cost = 0;
+      let lotBreakdown = [];
+
+      if (deductStock) {
+        const res = consumeFIFO(ing.id, needBase, { type: "SORTIE", motif: `Production: ${name}`, meta: { recipeId: editingRecipeId || "new" } });
+        if (!res.ok) return toast(res.msg);
+        cost = toNum(res.costTotal, 0);
+        lotBreakdown = res.breakdown || [];
+      } else {
+        cost = ingPmpUnitBase(ing) * needBase;
+      }
+
       costTotal += cost;
-      ing.baseQtyRemaining = Math.max(0, toNum(ing.baseQtyRemaining, 0) - toNum(it.baseQty, 0));
-      it.cost = cost;
+
+      ingredientsFinal.push({
+        ingredientId: ing.id,
+        name: ing.name,
+        qtyEntered: it.qtyEntered,
+        unitEntered: it.unitEntered,
+        baseQty: needBase,
+        cost,
+        lotBreakdown
+      });
     }
 
-    const costPerUnit = costTotal / producedQty;
+    const costPerUnit = producedTotal > 0 ? (costTotal / producedTotal) : 0;
 
-    const recipe = {
-      id: uid(),
-      name,
-      producedQty: producedTotal,
-      remainingQty: producedTotal, // ✅ stock par production
-      batches: mult,
-      deductStock: deductStock,
-      salePrice,
-      ingredients: recipeDraft.map(x => ({
-        ingredientId: x.ingredientId,
-        name: x.name,
-        qtyEntered: x.qtyEntered,
-        unitEntered: x.unitEntered,
-        baseQty: x.baseQty,
-        cost: x.cost
-      })),
-      costTotal,
-      costPerUnit,
-      createdAt: new Date().toISOString()
-    };
-
-    state.recipes.push(recipe);
+    // Enregistrer / mettre à jour
+    if (recipe) {
+      recipe.name = name;
+      recipe.producedQty = producedTotal;
+      recipe.salePrice = salePrice;
+      recipe.ingredients = ingredientsFinal;
+      recipe.costTotal = costTotal;
+      recipe.costPerUnit = costPerUnit;
+      recipe.deductStock = deductStock;
+      recipe.mult = mult;
+      recipe.updatedAt = new Date().toISOString();
+    } else {
+      recipe = {
+        id: uid(),
+        name,
+        producedQty: producedTotal,
+        salePrice,
+        ingredients: ingredientsFinal,
+        costTotal,
+        costPerUnit,
+        deductStock,
+        mult,
+        createdAt: new Date().toISOString()
+      };
+      state.recipes.push(recipe);
+    }
 
     // Ajouter à l'inventaire (valeur au coût)
-    state.inventory.finishedUnits += producedQty;
+    state.inventory.finishedUnits += producedTotal;
     state.inventory.finishedValue += costTotal;
 
     // reset UI
@@ -1698,10 +2811,17 @@ async function verifySignedActivationCode(code, expectedDid) {
     refreshPackRecipeOptions();
     refreshSalePackSelect();
     renderDashboard();
-    toast("Recette (production) enregistrée ✅");
+    renderStockSummary();
+
+    if (editingRecipeId) {
+      toast("Recette (production) modifiée ✅");
+      cancelEditRecipe();
+    } else {
+      toast("Recette (production) enregistrée ✅");
+    }
   }
 
-  function renderRecipes() {
+function renderRecipes() {
     const box = $("rec-liste");
     if (!box) return;
 
@@ -1765,15 +2885,36 @@ async function verifySignedActivationCode(code, expectedDid) {
 
     if (!confirm("Supprimer cette recette (production) va retirer ces produits du stock et annuler la consommation d\'ingrédients. Continuer ?")) return;
 
-    // rendre stock ingrédients
-    for (const it of (r.ingredients || [])) {
-      const ing = state.ingredients.find(i => i.id === it.ingredientId);
-      if (ing) {
-        ing.baseQtyRemaining = Math.min(toNum(ing.baseQtyTotal, 0), toNum(ing.baseQtyRemaining, 0) + toNum(it.baseQty, 0));
+    // rendre stock ingrédients (si la prod a décrémenté le stock)
+    if (r.deductStock !== false) {
+      for (const it of (r.ingredients || [])) {
+        const ing = state.ingredients.find(i => i.id === it.ingredientId);
+        if (!ing) continue;
+
+        if (Array.isArray(it.lotBreakdown) && it.lotBreakdown.length) {
+          restoreStockFromBreakdown(ing, it.lotBreakdown, `Suppression production: ${r.name || ""}`);
+        } else {
+          const qty = toNum(it.baseQty, 0);
+          if (qty > 0) {
+            const unitCost = ingPmpUnitBase(ing);
+            const lot = {
+              idLot: uid(),
+              dateEntree: dateISO(),
+              dlc: "",
+              quantiteInitialeBase: qty,
+              quantiteRestanteBase: qty,
+              numeroLotFournisseur: "DELETE_RECIPE",
+              prixAchatHTTotal: 0,
+              fraisApprocheTotal: 0,
+              coutRenduUnitaireBase: unitCost
+            };
+            ingLots(ing).push(lot);
+            recordStockMovement({ type: "INVENTAIRE", ingredientId: ing.id, lotId: lot.idLot, qtyBase: qty, costTotal: qty * unitCost, motif: `Suppression production (ancien format): ${r.name || ""}` });
+          }
+        }
       }
     }
-
-    // retirer de l'inventaire
+// retirer de l'inventaire
     state.inventory.finishedUnits = Math.max(0, toNum(state.inventory.finishedUnits, 0) - toNum(r.producedQty, 0));
     state.inventory.finishedValue = Math.max(0, toNum(state.inventory.finishedValue, 0) - toNum(r.costTotal, 0));
 
@@ -1793,6 +2934,7 @@ async function verifySignedActivationCode(code, expectedDid) {
      7) Packs
   ========================== */
   let packDraftRows = []; // [{id, recipeId, qty}]
+  let editingPackId = null; // pack en cours d'édition (sinon null)
 
   function refreshPackRecipeOptions() {
     // rien à faire ici directement: options sont rendues dans les rows
@@ -1811,7 +2953,63 @@ async function verifySignedActivationCode(code, expectedDid) {
     packDraftRows = packDraftRows.filter(r => r.id !== rowId);
     if (!packDraftRows.length) packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
     renderPackDraft();
+  
+  function updatePackEditUI() {
+    const box = $("pack-edit-box");
+    const nameEl = $("pack-edit-name");
+    const btnCancel = $("btn-pack-cancel-edit");
+
+    if (btnCancel && !btnCancel._bfmBound) {
+      btnCancel._bfmBound = true;
+      btnCancel.addEventListener("click", cancelPackEdit);
+    }
+
+    if (!box) return;
+
+    if (editingPackId) {
+      const p = state.packs.find(x => x.id === editingPackId);
+      box.classList.remove("hidden");
+      if (nameEl) nameEl.textContent = p ? `Pack : ${p.name}` : "";
+    } else {
+      box.classList.add("hidden");
+      if (nameEl) nameEl.textContent = "";
+    }
   }
+
+  function editPack(packId) {
+    const p = state.packs.find(x => x.id === packId);
+    if (!p) return toast("Pack introuvable.");
+
+    editingPackId = packId;
+
+    if ($("pack-nom")) $("pack-nom").value = p.name || "";
+    if ($("pack-margin")) $("pack-margin").value = String(clamp(toNum(p.margin, 30), 0, 90));
+    if ($("pack-price")) $("pack-price").value = String(Math.round(toNum(p.price, 0)));
+
+    packDraftRows = (p.items || []).map(it => ({
+      id: uid(),
+      recipeId: it.recipeId,
+      qty: Math.max(1, Math.floor(toNum(it.qty, 1)))
+    }));
+    if (!packDraftRows.length) packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
+
+    renderPackDraft();
+    updatePackEditUI();
+    toast("Mode édition activé ✎");
+  }
+
+  function cancelPackEdit() {
+    editingPackId = null;
+    if ($("pack-nom")) $("pack-nom").value = "";
+    if ($("pack-price")) $("pack-price").value = "";
+    if ($("pack-margin")) $("pack-margin").value = "30";
+    packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
+    renderPackDraft();
+    updatePackEditUI();
+    toast("Édition annulée.");
+  }
+
+}
 
   function getRecipeById(id) { return state.recipes.find(r => r.id === id); }
 
@@ -1886,8 +3084,15 @@ async function verifySignedActivationCode(code, expectedDid) {
       const tdQty = document.createElement("td");
       const inputQty = el("input", { type: "number", min: "1", value: String(row.qty ?? 1), class: "form-control", style: "max-width:110px;" });
       on(inputQty, "input", () => {
-        row.qty = Math.max(1, Math.floor(toNum(inputQty.value, 1)));
+        // IMPORTANT mobile: ne re-render pas à chaque chiffre (sinon le clavier se ferme)
+        row.qty = Math.max(1, Math.floor(toNum(inputQty.value, row.qty ?? 1)));
+      });
+      on(inputQty, "change", () => {
+        row.qty = Math.max(1, Math.floor(toNum(inputQty.value, row.qty ?? 1)));
         renderPackDraft();
+      });
+      on(inputQty, "keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); inputQty.blur(); }
       });
       tdQty.appendChild(inputQty);
 
@@ -1972,7 +3177,7 @@ async function verifySignedActivationCode(code, expectedDid) {
 
     if (!items.length) return toast("Ajoute au moins 1 recette au pack.");
 
-    // coût
+    // coût + détails
     let cost = 0;
     const expanded = [];
     for (const it of items) {
@@ -1995,28 +3200,45 @@ async function verifySignedActivationCode(code, expectedDid) {
 
     if (price < cost - 1e-9) return toast("Pack vendu à perte : prix < coût. Corrige le prix.");
 
-    const pack = {
-      id: uid(),
-      name,
-      items: expanded,
-      cost,
-      margin,
-      price,
-      createdAt: new Date().toISOString()
-    };
+    if (editingPackId) {
+      const existing = state.packs.find(x => x.id === editingPackId);
+      if (!existing) {
+        editingPackId = null;
+      } else {
+        existing.name = name;
+        existing.items = expanded;
+        existing.cost = cost;
+        existing.margin = margin;
+        existing.price = price;
+        existing.updatedAt = new Date().toISOString();
+      }
+      toast("Pack mis à jour ✅");
+    } else {
+      const pack = {
+        id: uid(),
+        name,
+        items: expanded,
+        cost,
+        margin,
+        price,
+        createdAt: new Date().toISOString()
+      };
+      state.packs.push(pack);
+      toast("Pack créé ✅");
+    }
 
-    state.packs.push(pack);
-
-    // reset draft
+    // reset draft + formulaire
     if ($("pack-nom")) $("pack-nom").value = "";
     if ($("pack-price")) $("pack-price").value = "";
+    editingPackId = null;
+    updatePackEditUI();
+
     packDraftRows = [{ id: uid(), recipeId: "", qty: 1 }];
 
     saveState();
     renderPackDraft();
     renderPacks();
     refreshSalePackSelect();
-    toast("Pack créé ✅");
   }
 
   function deletePack(id) {
@@ -2056,7 +3278,10 @@ async function verifySignedActivationCode(code, expectedDid) {
                 `Coût : ${money(p.cost)} • Prix : ${money(p.price)} • Marge : ${money(marginAbs)} (${roundSmart(marginPct)}%)`
               ])
             ]),
-            el("button", { class: "btn btn-pink", type: "button", onclick: () => deletePack(p.id) }, ["Supprimer"])
+            el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;" }, [
+              el("button", { class: "btn btn-secondary", type: "button", onclick: () => editPack(p.id) }, ["✎ Modifier"]),
+              el("button", { class: "btn btn-pink", type: "button", onclick: () => deletePack(p.id) }, ["Supprimer"])
+            ])
           ]),
           el("details", { style: "margin-top:10px;" }, [
             el("summary", {}, ["Voir contenu du pack"]),
@@ -2578,6 +3803,20 @@ function saleUnitsFromPacks() {
     if ($("dash-depenses")) $("dash-depenses").textContent = money(expensesTotal);
     if ($("dash-benefice-net")) $("dash-benefice-net").textContent = money(net);
 
+    // Perte alimentaire (PERTE) mois en cours (stock pro)
+    if ($("dash-waste-month")) {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      const wasteCost = (state.stockMovements || []).filter(x => x.type === "PERTE").reduce((s, x) => {
+        const d = new Date(x.ts || "");
+        if (isNaN(d.getTime())) return s;
+        if (d.getFullYear() !== y || d.getMonth() !== m) return s;
+        return s + toNum(x.costTotal, 0);
+      }, 0);
+      $("dash-waste-month").textContent = money(wasteCost);
+    }
+
     const pP = state.config.produitP || "produits";
     if ($("dash-stock-restant")) $("dash-stock-restant").textContent = `${Math.floor(toNum(state.inventory.finishedUnits, 0))} ${pP}`;
 
@@ -2847,6 +4086,10 @@ function saleUnitsFromPacks() {
 
     on($("btn-add-ingredient"), "click", addIngredient);
 
+    // Stock Pro: mode démo
+    on($("btn-seed-demo-stock"), "click", seedDemoStockProfile);
+    on($("btn-delete-demo-stock"), "click", deleteDemoStockProfile);
+
     on($("rec-add-ingredient-btn"), "click", addIngredientToRecipeDraft);
     on($("btn-save-recipe"), "click", saveRecipeProduction);
 
@@ -2872,6 +4115,7 @@ function saleUnitsFromPacks() {
   }
 
   function boot() {
+    migrateStateToV4();
     initDefaults();
     wireEvents();
 
